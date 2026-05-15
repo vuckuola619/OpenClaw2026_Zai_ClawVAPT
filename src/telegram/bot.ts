@@ -99,6 +99,7 @@ export class TelegramBot {
       if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
+      if (data.startsWith('simulatepay:')) return this.simulatePayment(chatId, userId, data.slice('simulatepay:'.length));
       if (data.startsWith('finishpay:')) return this.checkPayment(chatId, userId, data.slice('finishpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
     } catch (error) {
@@ -252,8 +253,7 @@ export class TelegramBot {
 
   private async pay(chatId: string | number, userId: string): Promise<void> {
     const tx = await this.orchestrator.createPaymentForUser(userId);
-    await this.sendMessage(chatId, paymentInstructionMessage(tx), paymentButtons(tx.orderId, tx.paymentUrl));
-    await this.sendPhoto(chatId, paymentQrUrl(tx.paymentUrl), 'Payment QR code. If this opens a Pakasir page instead of direct QRIS, tap Complete Payment QRIS to view/pay the official QRIS.');
+    await this.sendPhoto(chatId, paymentQrUrl(tx.paymentUrl), paymentInstructionMessage(tx), paymentButtons(tx.orderId, tx.paymentUrl));
   }
 
   private async jobSummary(chatId: string | number, userId: string): Promise<void> {
@@ -400,8 +400,10 @@ export class TelegramBot {
 
   private async simulatePayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /simulate_payment <order_id>', mainButtons());
+    const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const result = await this.orchestrator.simulatePayment(userId, orderId);
-    await this.sendMessage(chatId, `Sandbox payment simulation: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}${result.alreadyCredited ? '\nOrder already credited before.' : ''}`, mainButtons());
+    const after = this.orchestrator.quotaSnapshotForUser(userId).credits;
+    await this.sendMessage(chatId, `✅ QRIS payment simulated\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nCredits: +${result.creditsAdded} → ${after} total${result.alreadyCredited ? '\nOrder already credited before.' : ''}\nPrevious credits: ${before}`, mainButtons());
   }
 
   private async createPrDraft(chatId: string | number, jobId?: string): Promise<void> {
@@ -452,8 +454,8 @@ export class TelegramBot {
     await this.rawApi('sendDocument', form);
   }
 
-  private async sendPhoto(chatId: string | number, photo: string, caption: string): Promise<void> {
-    await this.api('sendPhoto', { chat_id: chatId, photo, caption });
+  private async sendPhoto(chatId: string | number, photo: string, caption: string, reply_markup?: ReplyMarkup): Promise<void> {
+    await this.api('sendPhoto', { chat_id: chatId, photo, caption, reply_markup });
   }
 
   private async answerCallback(callbackQueryId: string): Promise<void> { await this.api('answerCallbackQuery', { callback_query_id: callbackQueryId }); }
@@ -489,11 +491,11 @@ function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function reportButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Renew Verification', callback_data: `renew:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
-function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Complete QRIS Payment', url: paymentUrl }], [{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Complete QRIS Payment', callback_data: `simulatepay:${orderId}` }], [{ text: '🔗 Open Pakasir Page', url: paymentUrl }], [{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function paymentInstructionMessage(tx: { orderId: string; amount: number; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string; mode: string }): string {
   const adminFee = tx.adminFee ?? Math.max(0, (tx.totalPayment || tx.amount) - tx.amount);
   const totalPayment = tx.totalPayment || tx.amount + adminFee;
-  return `QRIS payment created\n\nOrder ID: ${tx.orderId}\nAmount: ${rupiah(tx.amount)}\nMethod: ${(tx.method || 'qris').toUpperCase()}\nAdmin Fee: ${rupiah(adminFee)}\nTotal Payment: ${rupiah(totalPayment)}\nStatus: Waiting for payment\n${tx.expiredAt ? `Expires At: ${tx.expiredAt}\n` : ''}\nTap “Complete QRIS Payment”, pay on Pakasir, then tap “I Have Paid / Check Status”.\n\nCredits after success: +10`;
+  return `QRIS payment created\n\nOrder ID: ${tx.orderId}\nAmount: ${rupiah(tx.amount)}\nMethod: ${(tx.method || 'qris').toUpperCase()}\nAdmin Fee: ${rupiah(adminFee)}\nTotal Payment: ${rupiah(totalPayment)}\nStatus: Waiting for payment\n${tx.expiredAt ? `Expires At: ${tx.expiredAt}\n` : ''}\nTap “Complete QRIS Payment” to simulate payment in sandbox/demo.\n\nCredits after success: +10`;
 }
 function paymentPendingMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }, credits: number): string { return `Payment not completed yet\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nMethod: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Admin Fee: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Payment: ${rupiah(result.totalPayment)}\n` : ''}Current credits: ${credits}\n\nIf you already paid, tap “I Have Paid / Check Status” again.`; }
 function paymentPaidMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string; creditsAdded: number; alreadyCredited: boolean }, credits: number): string { return `✅ Payment completed\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nMethod: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Admin Fee: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Payment: ${rupiah(result.totalPayment)}\n` : ''}${result.completedAt ? `Paid At: ${result.completedAt}\n` : ''}Credits added: +${result.creditsAdded}${result.alreadyCredited ? ' (already credited before)' : ''}\nCurrent credits: ${credits}`; }
