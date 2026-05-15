@@ -32,7 +32,7 @@ export class TelegramBot {
     const [cmd, ...args] = text.trim().split(/\s+/);
     try {
       this.limiter.assertAllowed(userId, cmd === '/scan' || cmd === '/web_scan_deep' ? 3 : 1);
-      if (cmd === '/start') return this.sendMainMenu(chatId);
+      if (cmd === '/start' || cmd === '/menu') return this.sendMainMenu(chatId);
       if (cmd === '/help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (cmd === '/demo') return this.runDemo(chatId);
       if (cmd === '/scan') return this.createScan(chatId, userId, args.join(' '));
@@ -67,6 +67,9 @@ export class TelegramBot {
       this.limiter.assertAllowed(userId, data.startsWith('run:') || data.startsWith('activeweb:') || data.startsWith('deepweb:') || data === 'scan_demo' ? 3 : 1);
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
+      if (data === 'scan_help') return this.sendMessage(chatId, 'Real target flow:\n/scan https://app.example.com\n/verify JOB-xxxx\n/web_scan JOB-xxxx\n/web_scan_deep JOB-xxxx\n/nmap_scan JOB-xxxx', mainButtons());
+      if (data === 'repo_help') return this.sendMessage(chatId, 'GitHub repo flow:\n/connect_repo JOB-xxxx https://github.com/owner/repo\n/repo_scan JOB-xxxx\n/repo_scan_deep JOB-xxxx', mainButtons());
+      if (data === 'report_help') return this.sendMessage(chatId, 'Report flow:\n/status JOB-xxxx\n/report JOB-xxxx\n/manual_review JOB-xxxx\n/export JOB-xxxx', mainButtons());
       if (data === 'demo') return this.runDemo(chatId);
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
@@ -115,7 +118,7 @@ export class TelegramBot {
   }
 
   private async sendMainMenu(chatId: string | number): Promise<void> {
-    return this.sendMessage(chatId, '🔒 ClawVAPT\nConsent-gated VAPT workflow. No verification = no scan. No scope lock = no scanner.\n\nChoose action:', mainButtons());
+    return this.sendMessage(chatId, '🔒 ClawVAPT\nReal target + GitHub repo VAPT. Demo is sandbox only.\n\nFlow:\n1) /scan <url>\n2) /verify <job_id>\n3) /connect_repo <job_id> <github_url>\n4) run safe/deep scans\n5) /report or /export\n\nChoose action:', mainButtons());
   }
 
   private async runDemo(chatId: string | number): Promise<void> {
@@ -288,8 +291,11 @@ export class TelegramBot {
   }
 
   private async setCommands(): Promise<void> {
+    await this.api('deleteMyCommands', {});
+    await this.api('setChatMenuButton', { menu_button: { type: 'commands' } });
     await this.api('setMyCommands', { commands: [
       { command: 'start', description: 'Open ClawVAPT menu' },
+      { command: 'menu', description: 'Refresh ClawVAPT menu' },
       { command: 'help', description: 'Show commands and safety rules' },
       { command: 'demo', description: 'Run deterministic demo' },
       { command: 'scan', description: 'Create web target: /scan https://site.com' },
@@ -352,8 +358,8 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Pay / Top Up', callback_data: 'pay' }], [{ text: 'Health', callback_data: 'health' }, { text: 'Help', callback_data: 'help' }], [{ text: 'Demo / Sandbox', callback_data: 'demo' }]] }; }
-function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '💳 Pay / Top Up', callback_data: 'pay' }, { text: '🩺 Health', callback_data: 'health' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }, { text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
