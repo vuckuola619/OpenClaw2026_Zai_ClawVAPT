@@ -53,6 +53,19 @@ Inline buttons are available for Demo, Scan Demo Site, Verify, Run Safe Scan, St
 /simulate_payment <order_id>
 ```
 
+
+## Multi-Agent Engine
+
+ClawVAPT runs a code-level multi-agent engine inside the backend service:
+
+1. `MainOrchestrator` owns state and Telegram responses.
+2. `MultiAgentEngine` dispatches structured tasks to specialist agents.
+3. `TrustVerifierPaymentAgent` handles ownership, scope lock, quota, and Pakasir.
+4. `RedTeamRepoScannerAgent` runs safe URL/repo scanners and normalization/correlation.
+5. `BlueTeamHardeningReportAgent` generates reports, patch plan, hardening plan, and retest gate.
+
+Each agent run writes start/complete/error JSONL audit events. OpenClaw is the server operator/orchestration environment; the product backend is a Node.js Telegram bot using this multi-agent engine.
+
 ## Real vs Mock
 
 | Capability | Status | Notes |

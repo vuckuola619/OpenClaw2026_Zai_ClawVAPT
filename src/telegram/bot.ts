@@ -86,7 +86,7 @@ export class TelegramBot {
   private async runDemo(chatId: string | number): Promise<void> {
     await this.sendMessage(chatId, 'Running deterministic demo...');
     const result = await this.orchestrator.demo();
-    await this.sendMessage(chatId, `✅ Demo complete\nJob: ${result.job.id}\nFindings: ${result.job.findings.length}\nPayment order: ${result.job.orderId}\nReports ready.`, jobButtons(result.job.id, result.job.orderId));
+    await this.sendMessage(chatId, `✅ Demo complete\nEngine: MultiAgentEngine\nAgents: TrustVerifierPaymentAgent → RedTeamRepoScannerAgent → BlueTeamHardeningReportAgent\nJob: ${result.job.id}\nFindings: ${result.job.findings.length}\nPayment order: ${result.job.orderId}\nReports ready.`, jobButtons(result.job.id, result.job.orderId));
     await this.sendDocument(chatId, result.reports.pdf, 'Sample PDF report');
     await this.sendDocument(chatId, result.reports.json, 'Sample JSON report');
   }
@@ -110,7 +110,7 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Running safe scan for ${jobId}...`);
     try {
       const result = await this.orchestrator.runApprovedScan(jobId);
-      await this.sendMessage(chatId, `✅ Scan complete\nJob: ${jobId}\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
+      await this.sendMessage(chatId, `✅ Scan complete\nEngine: MultiAgentEngine\nAgents: Trust → RedTeam → BlueTeam\nJob: ${jobId}\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
       await this.sendDocument(chatId, result.reports.pdf, 'PDF report');
     } catch (error) {
       const msg = safeError(error);
@@ -141,7 +141,7 @@ export class TelegramBot {
 
   private async harden(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /harden <job_id>', mainButtons());
-    const result = this.orchestrator.hardening(jobId);
+    const result = await this.orchestrator.hardening(jobId);
     return this.sendMessage(chatId, `Hardening plan: ${result.decision}\n- Web headers\n- Repo hygiene\n- Docker USER/HEALTHCHECK\n- SSH/firewall PLAN_ONLY\n- CI/SBOM recommendations\n\nNo changes applied automatically.`, jobButtons(jobId));
   }
 

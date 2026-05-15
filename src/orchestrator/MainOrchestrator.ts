@@ -3,9 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import type { AgentResult, Job, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
-import { TrustVerifierPaymentAgent } from '../agents/TrustVerifierPaymentAgent.js';
-import { RedTeamRepoScannerAgent } from '../agents/RedTeamRepoScannerAgent.js';
-import { BlueTeamHardeningReportAgent } from '../agents/BlueTeamHardeningReportAgent.js';
+import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
@@ -15,9 +13,7 @@ export class MainOrchestrator {
   jobs = new Map<string, Job>();
   quota = new QuotaStore();
   audit = new AuditLogger();
-  trust = new TrustVerifierPaymentAgent();
-  red = new RedTeamRepoScannerAgent();
-  blue = new BlueTeamHardeningReportAgent();
+  engine = new MultiAgentEngine(this.audit);
   payments = new PakasirAdapter();
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
@@ -34,16 +30,16 @@ export class MainOrchestrator {
   getJob(jobId: string): Job | undefined { return this.jobs.get(jobId); }
 
   async createChallenge(job: Job): Promise<AgentResult> {
-    const result = this.trust.challenge(job);
-    await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'PRE_ENGAGEMENT_CHECK', 'GENERATE_OWNERSHIP_CHALLENGE', 'challenge', 'ScopeGuard', 'DONE', {}, { decision: result.decision });
+    const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'challenge', { job });
+    const result = envelope.result;
     job.state = 'GENERATE_OWNERSHIP_CHALLENGE';
     return result;
   }
 
   async verifyDemo(jobId: string): Promise<AgentResult> {
     const job = this.mustJob(jobId);
-    const result = this.trust.verifyDemo(job, `clawvapt-verify-${job.id}`);
-    await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'VERIFY_OWNERSHIP', 'LOCK_SCOPE', 'verify_demo', 'ScopeGuard', result.status, {}, { scope: job.scopeHost });
+    const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'verify_demo', { job });
+    const result = envelope.result;
     job.state = result.next_state;
     return result;
   }
@@ -56,14 +52,15 @@ export class MainOrchestrator {
       this.quota.consume(job.userIdHash);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'LOCK_SCOPE', 'CHECK_QUOTA_OR_PAYMENT', q.reason === 'FREE' ? 'first_scan_free' : 'credits_scan', 'QuotaStore', 'DONE', {}, q);
     } else {
-      const payment = await this.trust.createPayment(job);
+      const payment = await this.engine.trust.createPayment(job);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'payment_gate', 'PakasirAdapter', payment.status, {}, { orderId: job.orderId });
       throw new Error(`PAYMENT_REQUIRED:${job.orderId}`);
     }
-    const scan = await this.red.scan(job);
-    await this.audit.transition(job.id, job.userIdHash, 'RedTeamRepoScannerAgent', 'CREATE_SCAN_PLAN', 'SCORE_AND_PRIORITIZE', 'safe_scan', 'BuiltInScanners', 'DONE', {}, { findings: scan.findings.length });
-    const patch = await this.blue.patch(job);
-    await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', 'OFFER_REMEDIATION', 'APPROVAL_GATE', 'plan_patch', 'PatchGenerator', 'MOCK', {}, { patch });
+    const scanEnvelope = await this.engine.run<import('../agents/types.js').ScanAgentResult>('RedTeamRepoScannerAgent', 'scan', { job });
+    const scan = scanEnvelope.result;
+    const patch = await this.engine.blue.patch(job);
+    const planEnvelope = await this.engine.run('BlueTeamHardeningReportAgent', 'remediation_plan', { job });
+    await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', planEnvelope.result.next_state, 'APPROVAL_GATE', 'plan_patch', 'PatchGenerator', 'MOCK', {}, { patch });
     await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', 'APPROVAL_GATE', 'RETEST', 'retest_required', 'RetestRunner', 'DONE', {}, { fixed_marked: false });
     const tools = await new ExternalSecurityToolRunner(this.audit).checkAll(job.id, job.userIdHash);
     const reports = await new ReportGenerator().generate(job, scan.correlations, tools, false);
@@ -90,7 +87,7 @@ export class MainOrchestrator {
     return { status: tx.status, creditsAdded: paid ? 10 : 0, mode: tx.mode };
   }
 
-  hardening(jobId: string): AgentResult { return this.blue.hardening(this.mustJob(jobId)); }
+  async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
 
   async demo(): Promise<{ job: Job; reports: { json: string; pdf: string }; transcript: string; tools: ToolStatus[] }> {
     const job = await this.createScan('demo-user', 'https://demo-owned-site.local');
@@ -100,7 +97,7 @@ export class MainOrchestrator {
     const result = await this.runApprovedScan(job.id);
     const second = this.quota.check(job.userIdHash);
     if (!second.allowed || secondBefore.allowed) {
-      const payment = await this.trust.createPayment(job);
+      const payment = await this.engine.trust.createPayment(job);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'payment_gate', 'PakasirAdapter', payment.status, {}, { orderId: job.orderId });
       this.quota.addCredits(job.userIdHash, 10);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CREATE_SCAN_PLAN', 'simulate_payment', 'PakasirAdapter', 'MOCK', { orderId: job.orderId }, { credits_added: 10 });
