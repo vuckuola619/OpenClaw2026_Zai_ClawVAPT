@@ -99,6 +99,7 @@ export class TelegramBot {
       if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
+      if (data.startsWith('finishpay:')) return this.checkPayment(chatId, userId, data.slice('finishpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
     } catch (error) {
       return this.sendMessage(chatId, formatSafeError(error), mainButtons());
@@ -233,7 +234,7 @@ export class TelegramBot {
 
   private async pay(chatId: string | number, userId: string): Promise<void> {
     const tx = await this.orchestrator.createPaymentForUser(userId);
-    await this.sendMessage(chatId, `Payment order: ${tx.orderId}\nAmount: Rp${tx.amount}\nMode: ${tx.mode}\nCredits after confirmation: +10`, { inline_keyboard: [[{ text: 'Open Pakasir', url: tx.paymentUrl }], [{ text: 'Check Payment', callback_data: `checkpay:${tx.orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
+    await this.sendMessage(chatId, paymentInstructionMessage(tx), paymentButtons(tx.orderId, tx.paymentUrl));
   }
 
   private async health(chatId: string | number): Promise<void> {
@@ -304,7 +305,11 @@ export class TelegramBot {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /check_payment <order_id>', mainButtons());
     const result = await this.orchestrator.checkPayment(userId, orderId);
     const q = this.orchestrator.quotaSnapshotForUser(userId);
-    await this.sendMessage(chatId, `Payment status: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}\nCredits now: ${q.credits}${result.alreadyCredited ? '\nOrder already credited before.' : ''}`, mainButtons());
+    const paid = result.status.toLowerCase() === 'completed' || result.status.toLowerCase() === 'paid' || result.status === 'MOCK_PAYMENT_CONFIRMED';
+    const text = paid
+      ? paymentPaidMessage(orderId, result, q.credits)
+      : paymentPendingMessage(orderId, result, q.credits);
+    await this.sendMessage(chatId, text, paid ? mainButtons() : { inline_keyboard: [[{ text: '✅ Saya Sudah Bayar / Cek Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
   private async simulatePayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
@@ -398,5 +403,14 @@ function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Selesaikan Pembayaran QRIS', url: paymentUrl }], [{ text: '✅ Saya Sudah Bayar / Cek Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function paymentInstructionMessage(tx: { orderId: string; amount: number; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string; mode: string }): string {
+  const adminFee = tx.adminFee ?? Math.max(0, (tx.totalPayment || tx.amount) - tx.amount);
+  const totalPayment = tx.totalPayment || tx.amount + adminFee;
+  return `Pembayaran QRIS dibuat\n\nOrder Id: ${tx.orderId}\nNominal: ${rupiah(tx.amount)}\nMetode: ${(tx.method || 'qris').toUpperCase()}\nBiaya Admin: ${rupiah(adminFee)}\nTotal Bayar: ${rupiah(totalPayment)}\nStatus: Menunggu pembayaran\n${tx.expiredAt ? `Expired: ${tx.expiredAt}\n` : ''}\nKlik “Selesaikan Pembayaran QRIS”, bayar di Pakasir, lalu tap “Saya Sudah Bayar / Cek Status”.\n\nCredits setelah sukses: +10`;
+}
+function paymentPendingMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }, credits: number): string { return `Pembayaran belum selesai\n\nOrder Id: ${orderId}\nStatus: ${result.status}\nMetode: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Biaya Admin: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Bayar: ${rupiah(result.totalPayment)}\n` : ''}Credits sekarang: ${credits}\n\nKalau sudah bayar, tap lagi “Saya Sudah Bayar / Cek Status”.`; }
+function paymentPaidMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string; creditsAdded: number; alreadyCredited: boolean }, credits: number): string { return `✅ Pembayaran berhasil\n\nOrder Id: ${orderId}\nStatus: ${result.status}\nMetode: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Biaya Admin: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Bayar: ${rupiah(result.totalPayment)}\n` : ''}${result.completedAt ? `Dibayar Pada: ${result.completedAt}\n` : ''}Credits ditambah: +${result.creditsAdded}${result.alreadyCredited ? ' (sudah pernah dikreditkan)' : ''}\nCredits sekarang: ${credits}`; }
+function rupiah(value: number): string { return `Rp ${Math.round(value).toLocaleString('id-ID')}`; }
 function splitTelegramText(text: string): string[] { const max = 3900; if (text.length <= max) return [text]; const chunks: string[] = []; let rest = text; while (rest.length > max) { const cut = rest.lastIndexOf('\n', max); const idx = cut > 1000 ? cut : max; chunks.push(rest.slice(0, idx)); rest = rest.slice(idx).trimStart(); } if (rest) chunks.push(rest); return chunks; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

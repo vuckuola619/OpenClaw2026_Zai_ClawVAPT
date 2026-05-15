@@ -1,8 +1,8 @@
 export type PakasirStatus = 'PENDING' | 'PAID' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED' | 'MOCK_PAYMENT_CONFIRMED';
-export interface PakasirTransaction { orderId: string; amount: number; paymentUrl: string; status: PakasirStatus; mode: 'sandbox'|'live'|'mock'; rawStatus?: string; paymentMethod?: string; completedAt?: string; }
+export interface PakasirTransaction { orderId: string; amount: number; paymentUrl: string; status: PakasirStatus; mode: 'sandbox'|'live'|'mock'; rawStatus?: string; paymentMethod?: string; totalPayment?: number; adminFee?: number; expiredAt?: string; completedAt?: string; }
 
-interface PakasirCreateResponse { payment?: { payment_method?: string; expired_at?: string; total_payment?: number } }
-interface PakasirDetailResponse { transaction?: { amount?: number; order_id?: string; project?: string; status?: string; payment_method?: string; completed_at?: string } }
+interface PakasirCreateResponse { payment?: { payment_method?: string; expired_at?: string; total_payment?: number; admin_fee?: number; fee?: number } }
+interface PakasirDetailResponse { transaction?: { amount?: number; order_id?: string; project?: string; status?: string; payment_method?: string; total_payment?: number; admin_fee?: number; fee?: number; completed_at?: string } }
 
 export class PakasirAdapter {
   baseUrl = process.env.PAKASIR_BASE_URL || 'https://app.pakasir.com';
@@ -25,7 +25,9 @@ export class PakasirAdapter {
     });
     if (!res.ok) throw new Error(`PAKASIR_CREATE_FAILED:${res.status}`);
     const json = await res.json() as PakasirCreateResponse;
-    return { orderId, amount, paymentUrl: this.createPaymentUrl(orderId, amount), status: 'PENDING', mode: this.mode === 'live' ? 'live' : 'sandbox', paymentMethod: json.payment?.payment_method || method };
+    const totalPayment = json.payment?.total_payment;
+    const adminFee = json.payment?.admin_fee ?? json.payment?.fee ?? (typeof totalPayment === 'number' ? Math.max(0, totalPayment - amount) : undefined);
+    return { orderId, amount, paymentUrl: this.createPaymentUrl(orderId, amount), status: 'PENDING', mode: this.mode === 'live' ? 'live' : 'sandbox', paymentMethod: json.payment?.payment_method || method, totalPayment, adminFee, expiredAt: json.payment?.expired_at };
   }
 
   async simulatePayment(orderId: string, amount: number): Promise<PakasirTransaction> {
@@ -48,7 +50,9 @@ export class PakasirAdapter {
     if (tx.order_id && tx.order_id !== orderId) throw new Error('PAKASIR_ORDER_MISMATCH');
     if (typeof tx.amount === 'number' && tx.amount !== amount) throw new Error('PAKASIR_AMOUNT_MISMATCH');
     const status = normalizePakasirStatus(tx.status);
-    return { orderId, amount, paymentUrl: this.createPaymentUrl(orderId, amount), status, rawStatus: tx.status, paymentMethod: tx.payment_method, completedAt: tx.completed_at, mode: this.mode === 'live' ? 'live' : 'sandbox' };
+    const totalPayment = tx.total_payment;
+    const adminFee = tx.admin_fee ?? tx.fee ?? (typeof totalPayment === 'number' ? Math.max(0, totalPayment - amount) : undefined);
+    return { orderId, amount, paymentUrl: this.createPaymentUrl(orderId, amount), status, rawStatus: tx.status, paymentMethod: tx.payment_method, totalPayment, adminFee, completedAt: tx.completed_at, mode: this.mode === 'live' ? 'live' : 'sandbox' };
   }
 
   isPaid(status: string): boolean { return isPaidPakasirStatus(status); }

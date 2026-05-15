@@ -138,16 +138,16 @@ export class MainOrchestrator {
     return { job, reports, correlations: scan.correlations, tools };
   }
 
-  async createPaymentForUser(userId: string): Promise<{ orderId: string; amount: number; paymentUrl: string; mode: string }> {
+  async createPaymentForUser(userId: string): Promise<{ orderId: string; amount: number; paymentUrl: string; mode: string; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string }> {
     const userHash = this.hashUser(userId);
     const orderId = `CLWV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${randomUUID().slice(0, 4)}`;
     const tx = await this.payments.createTransaction('qris', orderId, 25000);
     this.store.saveOrder({ orderId, userHash, amount: 25000, status: tx.status, mode: tx.mode, credited: false });
     await this.audit.transition(orderId, userHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'create_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', {}, { orderId, amount: 25000 });
-    return { orderId, amount: 25000, paymentUrl: tx.paymentUrl, mode: tx.mode };
+    return { orderId, amount: 25000, paymentUrl: tx.paymentUrl, mode: tx.mode, method: tx.paymentMethod, adminFee: tx.adminFee, totalPayment: tx.totalPayment, expiredAt: tx.expiredAt };
   }
 
-  async checkPayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean }> {
+  async checkPayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }> {
     const tx = await this.payments.getTransactionDetail(orderId, 25000);
     const paid = this.payments.isPaid(tx.status);
     const alreadyCredited = this.creditedOrders.has(orderId) || this.store.isOrderCredited(orderId);
@@ -158,10 +158,10 @@ export class MainOrchestrator {
     }
     this.store.saveOrder({ orderId, userHash: this.hashUser(userId), amount: 25000, status: tx.rawStatus || tx.status, mode: tx.mode, credited: paid });
     await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', paid ? 'CREATE_SCAN_PLAN' : 'CHECK_QUOTA_OR_PAYMENT', 'check_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', { orderId }, { status: tx.status, rawStatus: tx.rawStatus, creditsAdded, alreadyCredited });
-    return { status: tx.rawStatus || tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
+    return { status: tx.rawStatus || tx.status, creditsAdded, mode: tx.mode, alreadyCredited, method: tx.paymentMethod, adminFee: tx.adminFee, totalPayment: tx.totalPayment, completedAt: tx.completedAt };
   }
 
-  async simulatePayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean }> {
+  async simulatePayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }> {
     const tx = await this.payments.simulatePayment(orderId, 25000);
     const alreadyCredited = this.creditedOrders.has(orderId) || this.store.isOrderCredited(orderId);
     const creditsAdded = alreadyCredited ? 0 : 10;
@@ -171,7 +171,7 @@ export class MainOrchestrator {
     }
     this.store.saveOrder({ orderId, userHash: this.hashUser(userId), amount: 25000, status: tx.status, mode: tx.mode, credited: true });
     await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CREATE_SCAN_PLAN', 'simulate_payment', 'PakasirAdapter', 'MOCK', { orderId }, { status: tx.status, creditsAdded, alreadyCredited });
-    return { status: tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
+    return { status: tx.status, creditsAdded, mode: tx.mode, alreadyCredited, method: tx.paymentMethod, adminFee: tx.adminFee, totalPayment: tx.totalPayment, completedAt: tx.completedAt };
   }
 
   async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
