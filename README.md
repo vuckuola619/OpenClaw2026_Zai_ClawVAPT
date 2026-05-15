@@ -68,6 +68,8 @@ Each agent run writes start/complete/error JSONL audit events. OpenClaw is the s
 
 Optional bridge mode can publish sanitized agent envelopes to the local OpenClaw Gateway over loopback WebSocket (`chat.send`) without reusing the OpenClaw Telegram token. See `docs/openclaw-bridge.md`.
 
+SQLite persistence stores jobs, quotas, Pakasir credited orders, and report paths across PM2 restarts. See `docs/sqlite-persistence.md`.
+
 ## Real vs Mock
 
 | Capability | Status | Notes |

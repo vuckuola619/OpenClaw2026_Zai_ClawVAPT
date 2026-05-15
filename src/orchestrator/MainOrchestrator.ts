@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import type { AgentResult, Job, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
+import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
@@ -11,7 +12,8 @@ import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
   jobs = new Map<string, Job>();
-  quota = new QuotaStore();
+  store: PersistentStore;
+  quota: QuotaStore;
   audit = new AuditLogger();
   engine = new MultiAgentEngine(this.audit);
   payments = new PakasirAdapter();
@@ -19,21 +21,38 @@ export class MainOrchestrator {
   correlationsByJob = new Map<string, Correlation[]>();
   creditedOrders = new Set<string>();
 
+  constructor(store = new PersistentStore()) {
+    this.store = store;
+    this.quota = new QuotaStore(this.store.loadQuotas(), (q) => this.store.saveQuota(q.userHash, q.scans, q.credits));
+    for (const job of this.store.loadJobs()) this.jobs.set(job.id, job);
+    for (const report of this.store.loadReports()) this.reportsByJob.set(report.jobId, { json: report.json, pdf: report.pdf });
+    this.creditedOrders = this.store.loadCreditedOrders();
+  }
+
   hashUser(userId: string) { return createHash('sha256').update(userId).digest('hex').slice(0, 16); }
 
   async createScan(userId: string, targetUrl: string): Promise<Job> {
     const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: this.hashUser(userId), targetUrl, verified: false, scopeLocked: false, scopeHost: '', state: 'RECEIVE_REQUEST', freeScanUsed: false, credits: 0, findings: [] };
     this.jobs.set(job.id, job);
+    this.store.saveJob(job);
     await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'START', 'RECEIVE_REQUEST', 'create_job', 'telegram', 'DONE', { targetUrl }, { job_id: job.id });
     return job;
   }
 
   getJob(jobId: string): Job | undefined { return this.jobs.get(jobId); }
 
+  listJobsForUser(userId: string, limit = 10): Job[] {
+    const userHash = this.hashUser(userId);
+    return [...this.jobs.values()].filter((job) => job.userIdHash === userHash).slice(0, limit);
+  }
+
+  latestJobForUser(userId: string): Job | undefined { return this.listJobsForUser(userId, 1)[0]; }
+
   async createChallenge(job: Job): Promise<AgentResult> {
     const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'challenge', { job });
     const result = envelope.result;
     job.state = 'GENERATE_OWNERSHIP_CHALLENGE';
+    this.store.saveJob(job);
     return result;
   }
 
@@ -42,6 +61,7 @@ export class MainOrchestrator {
     const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'verify_demo', { job });
     const result = envelope.result;
     job.state = result.next_state;
+    this.store.saveJob(job);
     return result;
   }
 
@@ -54,6 +74,8 @@ export class MainOrchestrator {
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'LOCK_SCOPE', 'CHECK_QUOTA_OR_PAYMENT', q.reason === 'FREE' ? 'first_scan_free' : 'credits_scan', 'QuotaStore', 'DONE', {}, q);
     } else {
       const payment = await this.engine.trust.createPayment(job);
+      this.store.saveJob(job);
+      if (job.orderId) this.store.saveOrder({ orderId: job.orderId, userHash: job.userIdHash, amount: 25000, status: payment.status, mode: payment.status === 'MOCK' ? 'mock' : 'sandbox', credited: false });
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'payment_gate', 'PakasirAdapter', payment.status, {}, { orderId: job.orderId });
       throw new Error(`PAYMENT_REQUIRED:${job.orderId}`);
     }
@@ -66,9 +88,11 @@ export class MainOrchestrator {
     const tools = await new ExternalSecurityToolRunner(this.audit).checkAll(job.id, job.userIdHash);
     const reports = await new ReportGenerator().generate(job, scan.correlations, tools, false);
     this.reportsByJob.set(job.id, reports);
+    this.store.saveReport(job.id, reports);
     this.correlationsByJob.set(job.id, scan.correlations);
     await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', 'GENERATE_FINAL_REPORT', 'SEND_TELEGRAM_SUMMARY', 'report', 'ReportGenerator', 'DONE', {}, reports);
     job.state = 'SEND_TELEGRAM_SUMMARY';
+    this.store.saveJob(job);
     return { job, reports, correlations: scan.correlations, tools };
   }
 
@@ -76,6 +100,7 @@ export class MainOrchestrator {
     const userHash = this.hashUser(userId);
     const orderId = `CLWV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${randomUUID().slice(0, 4)}`;
     const tx = await this.payments.createTransaction('qris', orderId, 25000);
+    this.store.saveOrder({ orderId, userHash, amount: 25000, status: tx.status, mode: tx.mode, credited: false });
     await this.audit.transition(orderId, userHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'create_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', {}, { orderId, amount: 25000 });
     return { orderId, amount: 25000, paymentUrl: tx.paymentUrl, mode: tx.mode };
   }
@@ -83,12 +108,13 @@ export class MainOrchestrator {
   async checkPayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean }> {
     const tx = await this.payments.getTransactionDetail(orderId, 25000);
     const paid = this.payments.isPaid(tx.status);
-    const alreadyCredited = this.creditedOrders.has(orderId);
+    const alreadyCredited = this.creditedOrders.has(orderId) || this.store.isOrderCredited(orderId);
     const creditsAdded = paid && !alreadyCredited ? 10 : 0;
     if (creditsAdded > 0) {
       this.quota.addCredits(this.hashUser(userId), creditsAdded);
       this.creditedOrders.add(orderId);
     }
+    this.store.saveOrder({ orderId, userHash: this.hashUser(userId), amount: 25000, status: tx.rawStatus || tx.status, mode: tx.mode, credited: paid });
     await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', paid ? 'CREATE_SCAN_PLAN' : 'CHECK_QUOTA_OR_PAYMENT', 'check_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', { orderId }, { status: tx.status, rawStatus: tx.rawStatus, creditsAdded, alreadyCredited });
     return { status: tx.rawStatus || tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
   }

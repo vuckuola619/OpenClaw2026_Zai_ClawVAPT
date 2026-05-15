@@ -32,6 +32,8 @@ export class TelegramBot {
       if (cmd === '/scan') return this.createScan(chatId, userId, args.join(' '));
       if (cmd === '/verify') return this.verify(chatId, args[0]);
       if (cmd === '/status') return this.status(chatId, args[0]);
+      if (cmd === '/my_jobs') return this.myJobs(chatId, userId);
+      if (cmd === '/latest') return this.latest(chatId, userId);
       if (cmd === '/report') return this.report(chatId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
@@ -53,6 +55,8 @@ export class TelegramBot {
       if (data === 'pay') return this.pay(chatId, userId);
       if (data.startsWith('verify:')) return this.verify(chatId, data.slice('verify:'.length));
       if (data.startsWith('run:')) return this.runScan(chatId, data.slice('run:'.length));
+      if (data === 'my_jobs') return this.myJobs(chatId, userId);
+      if (data === 'latest') return this.latest(chatId, userId);
       if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
       if (data.startsWith('report:')) return this.report(chatId, data.slice('report:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
@@ -131,6 +135,19 @@ export class TelegramBot {
     return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nVerified: ${job.verified}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nFindings: ${job.findings.length}`, jobButtons(job.id, job.orderId));
   }
 
+  private async myJobs(chatId: string | number, userId: string): Promise<void> {
+    const jobs = this.orchestrator.listJobsForUser(userId, 10);
+    if (jobs.length === 0) return this.sendMessage(chatId, 'No persisted jobs yet. Create one with /scan <url>.', mainButtons());
+    const lines = jobs.map((job) => `• ${job.id} — ${job.state} — findings ${job.findings.length}`);
+    return this.sendMessage(chatId, `Your jobs:\n${lines.join('\n')}`, mainButtons());
+  }
+
+  private async latest(chatId: string | number, userId: string): Promise<void> {
+    const job = this.orchestrator.latestJobForUser(userId);
+    if (!job) return this.sendMessage(chatId, 'No latest job found.', mainButtons());
+    return this.status(chatId, job.id);
+  }
+
   private async report(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /report <job_id>', mainButtons());
     const reports = this.orchestrator.reportsByJob.get(jobId);
@@ -164,6 +181,8 @@ export class TelegramBot {
       { command: 'scan', description: 'Create scan job: /scan https://site.com' },
       { command: 'verify', description: 'Verify ownership: /verify JOB-id' },
       { command: 'status', description: 'Check job status' },
+      { command: 'my_jobs', description: 'List persisted jobs' },
+      { command: 'latest', description: 'Show latest job' },
       { command: 'report', description: 'Send report files' },
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
@@ -209,7 +228,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Help', callback_data: 'help' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Help', callback_data: 'help' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
