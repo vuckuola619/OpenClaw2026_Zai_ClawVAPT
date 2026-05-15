@@ -153,7 +153,7 @@ export class TelegramBot {
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /check_payment <order_id>', mainButtons());
     const result = await this.orchestrator.checkPayment(userId, orderId);
-    await this.sendMessage(chatId, `Payment status: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}`, mainButtons());
+    await this.sendMessage(chatId, `Payment status: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}${result.alreadyCredited ? '\nOrder already credited before.' : ''}`, mainButtons());
   }
 
   private async setCommands(): Promise<void> {

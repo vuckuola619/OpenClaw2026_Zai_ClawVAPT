@@ -17,6 +17,7 @@ export class MainOrchestrator {
   payments = new PakasirAdapter();
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
+  creditedOrders = new Set<string>();
 
   hashUser(userId: string) { return createHash('sha256').update(userId).digest('hex').slice(0, 16); }
 
@@ -79,12 +80,17 @@ export class MainOrchestrator {
     return { orderId, amount: 25000, paymentUrl: tx.paymentUrl, mode: tx.mode };
   }
 
-  async checkPayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string }> {
+  async checkPayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean }> {
     const tx = await this.payments.getTransactionDetail(orderId, 25000);
-    const paid = tx.status === 'MOCK_PAYMENT_CONFIRMED' || tx.status === 'PAID';
-    if (paid) this.quota.addCredits(this.hashUser(userId), 10);
-    await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CREATE_SCAN_PLAN', 'check_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', { orderId }, { status: tx.status, creditsAdded: paid ? 10 : 0 });
-    return { status: tx.status, creditsAdded: paid ? 10 : 0, mode: tx.mode };
+    const paid = this.payments.isPaid(tx.status);
+    const alreadyCredited = this.creditedOrders.has(orderId);
+    const creditsAdded = paid && !alreadyCredited ? 10 : 0;
+    if (creditsAdded > 0) {
+      this.quota.addCredits(this.hashUser(userId), creditsAdded);
+      this.creditedOrders.add(orderId);
+    }
+    await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', paid ? 'CREATE_SCAN_PLAN' : 'CHECK_QUOTA_OR_PAYMENT', 'check_payment', 'PakasirAdapter', tx.mode === 'mock' ? 'MOCK' : 'DONE', { orderId }, { status: tx.status, rawStatus: tx.rawStatus, creditsAdded, alreadyCredited });
+    return { status: tx.rawStatus || tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
   }
 
   async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
