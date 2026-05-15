@@ -46,6 +46,8 @@ export class TelegramBot {
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health') return this.health(chatId);
+      if (cmd === '/cleanup_preview') return this.cleanup(chatId, userId, false, args[0]);
+      if (cmd === '/cleanup_apply') return this.cleanup(chatId, userId, true, args[0]);
       if (cmd === '/tools') return this.toolsStatus(chatId, userId);
       if (cmd === '/connect_repo') return this.connectRepo(chatId, userId, args[0], args[1]);
       if (cmd === '/repo_scan') return this.repoScan(chatId, userId, 'safe', args[0]);
@@ -74,6 +76,7 @@ export class TelegramBot {
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
       if (data === 'health') return this.health(chatId);
+      if (data === 'cleanup_preview') return this.cleanup(chatId, userId, false);
       if (data === 'tools') return this.toolsStatus(chatId, userId);
       if (data.startsWith('repo_scan:')) return this.repoScan(chatId, userId, 'safe', data.slice('repo_scan:'.length));
       if (data.startsWith('repo_scan_deep:')) return this.repoScan(chatId, userId, 'deep', data.slice('repo_scan_deep:'.length));
@@ -228,6 +231,15 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Health: ${health.status}\n${checks}`, mainButtons());
   }
 
+  private async cleanup(chatId: string | number, userId: string, apply: boolean, rawTtl?: string): Promise<void> {
+    if (!isOperator(userId)) return this.sendMessage(chatId, 'Cleanup is operator-only. Set OPERATOR_USER_IDS to enable.', mainButtons());
+    const ttl = rawTtl ? Number(rawTtl) : undefined;
+    if (ttl !== undefined && (!Number.isFinite(ttl) || ttl < 1)) return this.sendMessage(chatId, 'Usage: /cleanup_preview [ttl_days] or /cleanup_apply [ttl_days]. TTL must be >= 1.', mainButtons());
+    const result = await this.orchestrator.cleanupArtifacts(userId, apply, ttl);
+    const lines = result.candidates.slice(0, 12).map((c) => `• ${c.kind} ${c.ageDays}d ${formatBytes(c.bytes)} ${c.path}`).join('\n') || 'No cleanup candidates.';
+    await this.sendMessage(chatId, `${apply ? 'Cleanup applied' : 'Cleanup preview'}\nTTL: ${result.ttlDays} days\nCandidates: ${result.candidates.length}\nDeleted: ${result.deleted.length}\nBytes: ${formatBytes(result.bytes)}\n\n${lines}\n\n${apply ? 'Deleted candidates above.' : 'Dry run only. Use /cleanup_apply '+result.ttlDays+' to delete.'}`, mainButtons());
+  }
+
   private async toolsStatus(chatId: string | number, userId: string): Promise<void> {
     const tools = await this.orchestrator.toolsStatus(userId);
     const lines = tools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`);
@@ -314,6 +326,8 @@ export class TelegramBot {
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
       { command: 'health', description: 'Show service health' },
+      { command: 'cleanup_preview', description: 'Operator dry-run artifact cleanup' },
+      { command: 'cleanup_apply', description: 'Operator apply artifact cleanup' },
       { command: 'tools', description: 'Show security tools status' },
       { command: 'repo_scan', description: 'Run repo safe scan: /repo_scan JOB-id' },
       { command: 'repo_scan_deep', description: 'Run repo deep scan: /repo_scan_deep JOB-id' }
@@ -358,7 +372,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '💳 Pay / Top Up', callback_data: 'pay' }, { text: '🩺 Health', callback_data: 'health' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '🧹 Cleanup Preview', callback_data: 'cleanup_preview' }, { text: '🩺 Health', callback_data: 'health' }], [{ text: '💳 Pay / Top Up', callback_data: 'pay' }, { text: '❔ Help', callback_data: 'help' }], [{ text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }, { text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
@@ -366,4 +380,6 @@ function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function isOperator(userId: string): boolean { return (process.env.OPERATOR_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean).includes(userId); }
+function formatBytes(bytes: number): string { if (bytes < 1024) return `${bytes}B`; if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)}KB`; return `${(bytes/1024/1024).toFixed(1)}MB`; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

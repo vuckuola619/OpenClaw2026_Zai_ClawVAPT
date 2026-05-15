@@ -4,6 +4,7 @@ import type { AgentResult, Finding, Job, ScanRun, ToolStatus } from '../types/in
 import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
+import { CleanupService, type CleanupResult } from '../core/CleanupService.js';
 import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
@@ -131,6 +132,13 @@ export class MainOrchestrator {
   }
 
   async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
+
+  async cleanupArtifacts(userId: string, apply = false, ttlDays?: number): Promise<CleanupResult> {
+    const userHash = this.hashUser(userId);
+    const result = apply ? await new CleanupService().apply(ttlDays) : await new CleanupService().preview(ttlDays);
+    await this.audit.transition('CLEANUP', userHash, 'MainOrchestrator', 'OPERATOR_REQUEST', 'CLEANUP_COMPLETE', apply ? 'cleanup_apply' : 'cleanup_preview', 'CleanupService', 'DONE', { ttlDays: result.ttlDays, dryRun: result.dryRun }, { candidates: result.candidates.length, deleted: result.deleted.length, bytes: result.bytes });
+    return result;
+  }
 
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
