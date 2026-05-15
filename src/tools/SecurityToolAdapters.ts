@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import type { Finding, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
 import { RepoScanner } from './RepoScanner.js';
@@ -57,8 +57,11 @@ export class SecurityToolAdapters {
 
   private async runGitleaks(jobId: string, userHash: string): Promise<{ status: ToolStatus; findings: Finding[] }> {
     if (!this.exists('gitleaks')) return this.missing('gitleaks');
-    const result = spawnSync('gitleaks', ['detect', '--source', this.root, '--no-git', '--redact', '--report-format', 'json', '--exit-code', '0'], { encoding: 'utf8', timeout: this.timeoutMs, maxBuffer: 2_000_000 });
-    const findings = parseJsonArray(result.stdout).map((item, i) => this.finding(`GITLEAKS-${i + 1}`, 'Secret detected by Gitleaks', 'CRITICAL', String(item.Description || item.RuleID || 'Gitleaks finding'), String(item.File || 'repo')));
+    const reportPath = `/tmp/clawvapt-gitleaks-${process.pid}-${Date.now()}.json`;
+    const result = spawnSync('gitleaks', ['detect', '--source', this.root, '--no-git', '--redact', '--report-format', 'json', '--report-path', reportPath, '--exit-code', '0'], { encoding: 'utf8', timeout: this.timeoutMs, maxBuffer: 2_000_000 });
+    const output = existsSync(reportPath) ? readFileSync(reportPath, 'utf8') : result.stdout;
+    if (existsSync(reportPath)) unlinkSync(reportPath);
+    const findings = parseJsonArray(output).map((item, i) => this.finding(`GITLEAKS-${i + 1}`, 'Secret detected by Gitleaks', 'CRITICAL', String(item.Description || item.RuleID || 'Gitleaks finding'), String(item.File || 'repo')));
     await this.audit.transition(jobId, userHash, 'RedTeamRepoScannerAgent', 'GITLEAKS', 'GITLEAKS_DONE', 'tool_run', 'gitleaks', result.status === 0 ? 'DONE' : 'ERROR', {}, { findings: findings.length });
     return { status: this.done('gitleaks', result.status === 0 ? 'executed' : 'executed_with_error'), findings };
   }
@@ -74,7 +77,7 @@ export class SecurityToolAdapters {
 
   private async runTrivy(jobId: string, userHash: string): Promise<{ status: ToolStatus; findings: Finding[] }> {
     if (!this.exists('trivy')) return this.missing('trivy');
-    const result = spawnSync('trivy', ['fs', '--format', 'json', '--scanners', 'vuln,secret,config', '--timeout', '30s', this.root], { encoding: 'utf8', timeout: Math.max(this.timeoutMs, 35000), maxBuffer: 4_000_000 });
+    const result = spawnSync('trivy', ['fs', '--format', 'json', '--scanners', 'vuln,secret,misconfig', '--skip-dirs', 'node_modules', '--skip-dirs', '.git', '--skip-dirs', 'dist', '--skip-dirs', 'data', '--timeout', '30s', this.root], { encoding: 'utf8', timeout: Math.max(this.timeoutMs, 35000), maxBuffer: 4_000_000 });
     const parsed = parseJsonObject(result.stdout);
     const findings: Finding[] = [];
     for (const r of Array.isArray(parsed?.Results) ? parsed.Results : []) {
