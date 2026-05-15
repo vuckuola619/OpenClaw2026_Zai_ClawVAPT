@@ -70,6 +70,8 @@ Optional bridge mode can publish sanitized agent envelopes to the local OpenClaw
 
 SQLite persistence stores jobs, quotas, Pakasir credited orders, and report paths across PM2 restarts. See `docs/sqlite-persistence.md`.
 
+Production guardrails add per-user rate limiting, target URL safety policy, structured safe errors, and `/health`. See `docs/production-guardrails.md`.
+
 ## Real vs Mock
 
 | Capability | Status | Notes |

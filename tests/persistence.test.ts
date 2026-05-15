@@ -18,7 +18,7 @@ test('SQLite persistence recovers jobs across orchestrator instances', async () 
   assert.ok(recovered);
   assert.equal(recovered?.verified, true);
   assert.equal(recovered?.scopeLocked, true);
-  assert.equal(recovered?.targetUrl, 'https://demo-owned-site.local');
+  assert.equal(recovered?.targetUrl, 'https://demo-owned-site.local/');
 });
 
 test('SQLite persistence prevents duplicate payment credits after restart', async () => {

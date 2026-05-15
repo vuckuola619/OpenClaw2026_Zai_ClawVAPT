@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import type { AgentResult, Job, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
+import { validatePublicTarget } from '../core/TargetSafety.js';
 import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
@@ -32,7 +33,8 @@ export class MainOrchestrator {
   hashUser(userId: string) { return createHash('sha256').update(userId).digest('hex').slice(0, 16); }
 
   async createScan(userId: string, targetUrl: string): Promise<Job> {
-    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: this.hashUser(userId), targetUrl, verified: false, scopeLocked: false, scopeHost: '', state: 'RECEIVE_REQUEST', freeScanUsed: false, credits: 0, findings: [] };
+    const safeUrl = validatePublicTarget(targetUrl);
+    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: this.hashUser(userId), targetUrl: safeUrl.toString(), verified: false, scopeLocked: false, scopeHost: '', state: 'RECEIVE_REQUEST', freeScanUsed: false, credits: 0, findings: [] };
     this.jobs.set(job.id, job);
     this.store.saveJob(job);
     await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'START', 'RECEIVE_REQUEST', 'create_job', 'telegram', 'DONE', { targetUrl }, { job_id: job.id });

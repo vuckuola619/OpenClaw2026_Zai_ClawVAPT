@@ -1,5 +1,7 @@
+import { validatePublicTarget } from './TargetSafety.js';
+
 export class ScopeGuard {
-  validateUrl(raw: string): URL { const url = new URL(raw); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('UNSUPPORTED_PROTOCOL'); if (!url.hostname || url.hostname === 'localhost' && process.env.DEMO_MODE !== 'true') throw new Error('INVALID_HOST'); return url; }
+  validateUrl(raw: string): URL { return validatePublicTarget(raw); }
   createChallenge(jobId: string): string { return `clawvapt-verify-${jobId}`; }
   verifyDemo(token: string, jobId: string): boolean { return token === this.createChallenge(jobId); }
   lockScope(targetUrl: string): string { return this.validateUrl(targetUrl).hostname.toLowerCase(); }

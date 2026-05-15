@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { MainOrchestrator } from '../orchestrator/MainOrchestrator.js';
+import { RateLimiter } from '../core/RateLimiter.js';
+import { formatSafeError } from '../core/AppError.js';
+import { healthCheck } from '../core/HealthCheck.js';
 import { helpText } from './commands.js';
 
 type InlineButton = { text: string; callback_data?: string; url?: string };
@@ -13,6 +16,7 @@ export class TelegramBot {
   private offset = 0;
   private stopped = false;
   private orchestrator = new MainOrchestrator();
+  private limiter = new RateLimiter();
   constructor(private token: string) {}
 
   async start(): Promise<void> {
@@ -26,6 +30,7 @@ export class TelegramBot {
   async handleText(chatId: string | number, userId: string, text: string): Promise<void> {
     const [cmd, ...args] = text.trim().split(/\s+/);
     try {
+      this.limiter.assertAllowed(userId, cmd === '/scan' ? 3 : 1);
       if (cmd === '/start') return this.sendMainMenu(chatId);
       if (cmd === '/help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (cmd === '/demo') return this.runDemo(chatId);
@@ -37,22 +42,25 @@ export class TelegramBot {
       if (cmd === '/report') return this.report(chatId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
+      if (cmd === '/health') return this.health(chatId);
       if (cmd === '/check_payment' || cmd === '/simulate_payment') return this.checkPayment(chatId, userId, args[0]);
       if (cmd === '/connect_repo' || cmd === '/create_pr' || cmd === '/ssh_plan' || cmd === '/approve') return this.sendMessage(chatId, 'Command skeleton ready. Demo mode uses patch-only remediation; no auto-merge, no SSH changes.', mainButtons());
       return this.sendMessage(chatId, 'Unknown command. Tap Help.', mainButtons());
     } catch (error) {
-      return this.sendMessage(chatId, safeError(error), mainButtons());
+      return this.sendMessage(chatId, formatSafeError(error), mainButtons());
     }
   }
 
   async handleCallback(queryId: string, chatId: string | number, userId: string, data = ''): Promise<void> {
     await this.answerCallback(queryId);
     try {
+      this.limiter.assertAllowed(userId, data.startsWith('run:') || data === 'scan_demo' ? 3 : 1);
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'demo') return this.runDemo(chatId);
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
+      if (data === 'health') return this.health(chatId);
       if (data.startsWith('verify:')) return this.verify(chatId, data.slice('verify:'.length));
       if (data.startsWith('run:')) return this.runScan(chatId, data.slice('run:'.length));
       if (data === 'my_jobs') return this.myJobs(chatId, userId);
@@ -63,7 +71,7 @@ export class TelegramBot {
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
     } catch (error) {
-      return this.sendMessage(chatId, safeError(error), mainButtons());
+      return this.sendMessage(chatId, formatSafeError(error), mainButtons());
     }
   }
 
@@ -77,7 +85,7 @@ export class TelegramBot {
           if (update.callback_query?.message) await this.handleCallback(update.callback_query.id, update.callback_query.message.chat.id, String(update.callback_query.from.id), update.callback_query.data);
         }
       } catch (error) {
-        console.error('telegram polling error:', safeError(error));
+        console.error('telegram polling error:', formatSafeError(error));
         await sleep(3000);
       }
     }
@@ -117,7 +125,7 @@ export class TelegramBot {
       await this.sendMessage(chatId, `✅ Scan complete\nEngine: MultiAgentEngine\nAgents: Trust → RedTeam → BlueTeam\nJob: ${jobId}\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
       await this.sendDocument(chatId, result.reports.pdf, 'PDF report');
     } catch (error) {
-      const msg = safeError(error);
+      const msg = error instanceof Error ? error.message : String(error);
       if (msg.startsWith('PAYMENT_REQUIRED:')) {
         const orderId = msg.split(':')[1];
         const job = this.orchestrator.getJob(jobId);
@@ -167,6 +175,12 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Payment order: ${tx.orderId}\nAmount: Rp${tx.amount}\nMode: ${tx.mode}\nCredits after confirmation: +10`, { inline_keyboard: [[{ text: 'Open Pakasir', url: tx.paymentUrl }], [{ text: 'Check Payment', callback_data: `checkpay:${tx.orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
+  private async health(chatId: string | number): Promise<void> {
+    const health = healthCheck();
+    const checks = Object.entries(health.checks).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+    await this.sendMessage(chatId, `Health: ${health.status}\n${checks}`, mainButtons());
+  }
+
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /check_payment <order_id>', mainButtons());
     const result = await this.orchestrator.checkPayment(userId, orderId);
@@ -186,7 +200,8 @@ export class TelegramBot {
       { command: 'report', description: 'Send report files' },
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
-      { command: 'check_payment', description: 'Check Pakasir payment' }
+      { command: 'check_payment', description: 'Check Pakasir payment' },
+      { command: 'health', description: 'Show service health' }
     ] });
   }
 
@@ -228,9 +243,8 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Help', callback_data: 'help' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Health', callback_data: 'health' }], [{ text: 'Help', callback_data: 'help' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
-function safeError(error: unknown): string { const message = error instanceof Error ? error.message : String(error); return message.replace(/[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}/g, '[REDACTED]').replace(/\b\d{8,}:[A-Za-z0-9_-]{20,}\b/g, '[REDACTED]'); }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }
