@@ -58,3 +58,26 @@ Nmap remains disabled until a strict network scan profile exists.
 ## Reporting expectations
 
 Deep scan findings are normalized into the existing `Finding[]` schema with redacted evidence. Raw response bodies and secrets are not sent to Telegram.
+
+
+## Risk model and approval agreement
+
+Risky means operational impact risk, not merely authorization status.
+
+Even in a valid authorized environment, deeper scanners can:
+
+- generate large access logs
+- trigger WAF/SIEM/EDR alerts
+- create 4xx/5xx application errors
+- hit expensive endpoints repeatedly
+- trigger rate limits or lockout controls if misconfigured
+- expose fragile staging/dev services
+
+ClawVAPT therefore requires explicit approval + agreement before active web scanning. The Telegram approval button states that the user confirms:
+
+1. the target is authorized for testing,
+2. they have permission to scan,
+3. they accept scan noise/logging risk,
+4. ClawVAPT must stay inside locked scope.
+
+Deep mode is enterprise-grade but non-destructive. It still blocks DoS, fuzzing, brute force, default-login, destructive RCE, SSRF, and LFI by default. Those classes require a future lab-only profile with stronger written authorization and isolated target controls.
