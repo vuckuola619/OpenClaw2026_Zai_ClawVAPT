@@ -105,3 +105,5 @@ docker compose logs --tail=200
 ## Limitations
 
 Hackathon MVP. Not a legal compliance guarantee, not an offensive hacking bot, not multi-tenant SaaS yet.
+
+Active web scanner gate adds `/web_scan <job_id>` with explicit approval, verified scope enforcement, rate limits, and Nuclei safe profile. See `docs/active-web-scanner-gate.md`.

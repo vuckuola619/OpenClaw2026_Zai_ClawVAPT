@@ -10,6 +10,7 @@ import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult } from '../tools/SecurityToolAdapters.js';
+import { ActiveWebScanner, type ActiveWebScanResult } from '../tools/ActiveWebScanner.js';
 import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
@@ -20,6 +21,7 @@ export class MainOrchestrator {
   engine = new MultiAgentEngine(this.audit);
   payments = new PakasirAdapter();
   securityTools = new SecurityToolAdapters(this.audit);
+  activeWebScanner = new ActiveWebScanner(this.audit);
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
   creditedOrders = new Set<string>();
@@ -128,6 +130,23 @@ export class MainOrchestrator {
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
   async runRepoSecuritySuite(userId = 'system'): Promise<ToolRunResult> { return this.securityTools.runRepoSuite('repo-security-suite', this.hashUser(userId)); }
+
+  activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }
+
+  async previewActiveWebScan(jobId: string): Promise<{ job: Job; tools: ToolStatus[] }> {
+    const job = this.mustJob(jobId);
+    if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
+    return { job, tools: this.activeWebToolsStatus() };
+  }
+
+  async runActiveWebScan(jobId: string, userId: string, approved = false): Promise<ActiveWebScanResult> {
+    const job = this.mustJob(jobId);
+    const result = await this.activeWebScanner.scan({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved });
+    job.findings = [...job.findings, ...result.findings];
+    job.state = 'ACTIVE_WEB_SCAN_COMPLETE';
+    this.store.saveJob(job);
+    return result;
+  }
 
   async demo(): Promise<{ job: Job; reports: { json: string; pdf: string }; transcript: string; tools: ToolStatus[] }> {
     const job = await this.createScan('demo-user', 'https://demo-owned-site.local');

@@ -24,7 +24,7 @@ ClawVAPT can route sanitized agent events from `@capithon_bot` to the local Open
 ```env
 OPENCLAW_BRIDGE_ENABLED=true
 OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
-OPENCLAW_GATEWAY_TOKEN=<gateway auth token>
+OPENCLAW_GATEWAY_TOKEN=<token>
 OPENCLAW_BRIDGE_TIMEOUT_MS=8000
 ```
 
