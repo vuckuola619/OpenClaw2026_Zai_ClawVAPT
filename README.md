@@ -109,3 +109,5 @@ Hackathon MVP. Not a legal compliance guarantee, not an offensive hacking bot, n
 Active web scanner gate adds `/web_scan <job_id>` with explicit approval, verified scope enforcement, rate limits, and Nuclei safe profile. See `docs/active-web-scanner-gate.md`.
 
 Enterprise deep web scan adds `/web_scan_deep <job_id>` with Nuclei deep non-destructive profile and controlled Nikto profile. See `docs/enterprise-deep-web-scan.md`.
+
+Vibe coding scan profiles add `/repo_scan` safe and `/repo_scan_deep` deep code scanning for AI-generated apps. See `docs/vibe-coding-scan-profiles.md`.

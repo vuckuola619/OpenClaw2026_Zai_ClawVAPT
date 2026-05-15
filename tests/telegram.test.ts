@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TELEGRAM_COMMANDS, helpText } from '../src/telegram/commands.js';
 
 test('telegram command skeleton includes required user commands', () => {
-  for (const command of ['/start','/help','/scan <url>','/verify <job_id>','/web_scan <job_id>','/web_scan_deep <job_id>','/status <job_id>','/my_jobs','/latest','/report <job_id>','/harden <job_id>','/pay','/check_payment <order_id>','/simulate_payment <order_id>','/demo']) {
+  for (const command of ['/start','/help','/scan <url>','/verify <job_id>','/web_scan <job_id>','/web_scan_deep <job_id>','/status <job_id>','/my_jobs','/latest','/report <job_id>','/harden <job_id>','/pay','/check_payment <order_id>','/simulate_payment <order_id>','/repo_scan','/repo_scan_deep','/demo']) {
     assert.ok(TELEGRAM_COMMANDS.includes(command), `${command} missing`);
   }
 });

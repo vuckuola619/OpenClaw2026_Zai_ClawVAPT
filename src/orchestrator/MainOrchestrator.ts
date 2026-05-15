@@ -9,7 +9,7 @@ import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
-import { SecurityToolAdapters, type ToolRunResult } from '../tools/SecurityToolAdapters.js';
+import { SecurityToolAdapters, type ToolRunResult, type RepoScanProfile } from '../tools/SecurityToolAdapters.js';
 import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
 import type { Correlation } from '../tools/Correlator.js';
 
@@ -129,7 +129,7 @@ export class MainOrchestrator {
 
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
-  async runRepoSecuritySuite(userId = 'system'): Promise<ToolRunResult> { return this.securityTools.runRepoSuite('repo-security-suite', this.hashUser(userId)); }
+  async runRepoSecuritySuite(userId = 'system', profile: RepoScanProfile = 'safe'): Promise<ToolRunResult> { return this.securityTools.runRepoSuite(`repo-security-suite-${profile}`, this.hashUser(userId), profile); }
 
   activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }
 
