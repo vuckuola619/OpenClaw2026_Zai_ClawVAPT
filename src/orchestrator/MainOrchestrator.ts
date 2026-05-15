@@ -152,7 +152,22 @@ export class MainOrchestrator {
     return { status: tx.rawStatus || tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
   }
 
+  async simulatePayment(userId: string, orderId: string): Promise<{ status: string; creditsAdded: number; mode: string; alreadyCredited: boolean }> {
+    const tx = await this.payments.simulatePayment(orderId, 25000);
+    const alreadyCredited = this.creditedOrders.has(orderId) || this.store.isOrderCredited(orderId);
+    const creditsAdded = alreadyCredited ? 0 : 10;
+    if (creditsAdded > 0) {
+      this.quota.addCredits(this.hashUser(userId), creditsAdded);
+      this.creditedOrders.add(orderId);
+    }
+    this.store.saveOrder({ orderId, userHash: this.hashUser(userId), amount: 25000, status: tx.status, mode: tx.mode, credited: true });
+    await this.audit.transition(orderId, this.hashUser(userId), 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CREATE_SCAN_PLAN', 'simulate_payment', 'PakasirAdapter', 'MOCK', { orderId }, { status: tx.status, creditsAdded, alreadyCredited });
+    return { status: tx.status, creditsAdded, mode: tx.mode, alreadyCredited };
+  }
+
   async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
+
+  async createPrDraft(jobId: string): Promise<{ path: string }> { const job = this.mustJob(jobId); return { path: await this.engine.blue.prDraft(job) }; }
 
   async cleanupArtifacts(userId: string, apply = false, ttlDays?: number): Promise<CleanupResult> {
     const userHash = this.hashUser(userId);

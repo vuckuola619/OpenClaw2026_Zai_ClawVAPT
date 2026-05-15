@@ -10,6 +10,19 @@ test('scope lock enforcement blocks unverified and out of scope', () => { const 
 test('first scan free, second requires payment', () => { const q=new QuotaStore(); assert.deepEqual(q.check('u').reason,'FREE'); q.consume('u'); assert.equal(q.check('u').allowed,false); q.addCredits('u',10); assert.deepEqual(q.check('u').reason,'CREDITS'); });
 test('pakasir payment url generation', () => { const p=new PakasirAdapter(); const url=p.createPaymentUrl('ORDER-1',25000); assert.match(url,/order_id=ORDER-1/); assert.match(url,/25000/); });
 
+test('pakasir simulation is sandbox/demo gated', async () => {
+  const oldMode = process.env.PAKASIR_MODE;
+  const oldDemo = process.env.DEMO_MODE;
+  process.env.PAKASIR_MODE = 'live';
+  process.env.DEMO_MODE = 'false';
+  await assert.rejects(() => new PakasirAdapter().simulatePayment('ORDER-1', 25000), /SIMULATION_DISABLED/);
+  process.env.PAKASIR_MODE = 'sandbox';
+  const tx = await new PakasirAdapter().simulatePayment('ORDER-1', 25000);
+  assert.equal(tx.status, 'MOCK_PAYMENT_CONFIRMED');
+  if (oldMode === undefined) delete process.env.PAKASIR_MODE; else process.env.PAKASIR_MODE = oldMode;
+  if (oldDemo === undefined) delete process.env.DEMO_MODE; else process.env.DEMO_MODE = oldDemo;
+});
+
 test('pakasir completed status counts as paid', () => {
   assert.equal(normalizePakasirStatus('completed'), 'COMPLETED');
   assert.equal(isPaidPakasirStatus('completed'), true);

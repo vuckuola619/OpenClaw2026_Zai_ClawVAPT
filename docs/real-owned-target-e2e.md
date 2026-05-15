@@ -19,7 +19,7 @@ The runner refuses to run when:
 ```bash
 REAL_E2E_TARGET_URL=https://your-owned-domain.com
 REAL_E2E_REPO_URL=https://github.com/owner/repo
-REAL_E2E_OPERATOR_ID=663952250
+REAL_E2E_OPERATOR_ID=<telegram_user_id>
 REAL_E2E_JOB_ID=                 # set after first challenge run to reuse same token
 REAL_E2E_REPO_PROFILE=safe        # safe|deep
 REAL_E2E_WEB_PROFILE=safe         # safe|deep

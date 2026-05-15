@@ -11,6 +11,8 @@ logs/*.jsonl
 reports/*.pdf
 reports/*.json
 patches/JOB-*_remediation.patch
+patches/JOB-*_pr_body.md
+reports/JOB-*.md
 !reports/sample_report.pdf
 !reports/sample_report.json
 runtime/

@@ -14,7 +14,7 @@ test('real e2e refuses demo and placeholder targets', () => {
 });
 
 test('real e2e accepts public target and github repo config', () => {
-  const config = configFromEnv({ REAL_E2E_TARGET_URL: 'https://app.real-owned.invalid', REAL_E2E_REPO_URL: 'https://github.com/owner/repo', REAL_E2E_OPERATOR_ID: '663952250', REAL_E2E_APPROVE_ACTIVE_SCAN: 'true', REAL_E2E_REPO_PROFILE: 'deep' });
+  const config = configFromEnv({ REAL_E2E_TARGET_URL: 'https://app.real-owned.invalid', REAL_E2E_REPO_URL: 'https://github.com/owner/repo', REAL_E2E_OPERATOR_ID: 'operator-test', REAL_E2E_APPROVE_ACTIVE_SCAN: 'true', REAL_E2E_REPO_PROFILE: 'deep' });
   assert.equal(config.approveActiveScan, true);
   assert.equal(config.repoProfile, 'deep');
   assert.equal(config.jobId, undefined);
@@ -22,7 +22,7 @@ test('real e2e accepts public target and github repo config', () => {
 });
 
 test('real e2e supports stable job resume id', () => {
-  const config = configFromEnv({ REAL_E2E_TARGET_URL: 'https://app.real-owned.invalid', REAL_E2E_REPO_URL: 'owner/repo', REAL_E2E_OPERATOR_ID: '663952250', REAL_E2E_JOB_ID: 'JOB-abcd1234' });
+  const config = configFromEnv({ REAL_E2E_TARGET_URL: 'https://app.real-owned.invalid', REAL_E2E_REPO_URL: 'owner/repo', REAL_E2E_OPERATOR_ID: 'operator-test', REAL_E2E_JOB_ID: 'JOB-abcd1234' });
   assert.equal(config.jobId, 'JOB-abcd1234');
 });
 

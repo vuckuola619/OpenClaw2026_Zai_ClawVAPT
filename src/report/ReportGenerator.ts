@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { Finding, Job, ScanRun, Severity, ToolStatus } from '../types/index.js';
 import type { Correlation } from '../tools/Correlator.js';
@@ -33,7 +35,9 @@ export class ReportGenerator {
       redaction_applied:true
     };
     await writeFile(jsonPath, JSON.stringify(report,null,2));
-    await writeFile(pdfPath, this.pdf(job, severity, toolMatrix, job.findings));
+    const enterpriseScript = 'scripts/generate_enterprise_report.py';
+    const enterprise = existsSync(enterpriseScript) ? spawnSync('python3', [enterpriseScript, jsonPath, pdfPath], { encoding: 'utf8', timeout: 30000, maxBuffer: 1_000_000 }) : null;
+    if (!enterprise || enterprise.status !== 0) await writeFile(pdfPath, this.pdf(job, severity, toolMatrix, job.findings));
     return {json:jsonPath,pdf:pdfPath};
   }
   private pdf(job: Job, severity: Record<Severity, number>, tools: Array<{name:string; status:string; mode:string}>, findings: Finding[]): string {

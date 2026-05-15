@@ -33,7 +33,7 @@ npm run demo
 
 ## Telegram Commands
 
-Inline buttons are available for Demo, Scan Demo Site, Verify, Run Safe Scan, Status, Report, Hardening Plan, Pay, and Check Payment.
+Inline buttons are available for real target onboarding, GitHub repo connection, repo/web scans, strict Nmap approval, reports/export, manual review, payment, and sandbox demo.
 
 ```txt
 /start
@@ -41,9 +41,17 @@ Inline buttons are available for Demo, Scan Demo Site, Verify, Run Safe Scan, St
 /demo
 /scan <url>
 /verify <job_id>
-/connect_repo <owner/repo>
+/challenge <job_id>
+/connect_repo <job_id> <github_url>
+/repo_scan <job_id>
+/repo_scan_deep <job_id>
+/web_scan <job_id>
+/web_scan_deep <job_id>
+/nmap_scan <job_id>
 /status <job_id>
 /report <job_id>
+/manual_review <job_id>
+/export <job_id>
 /create_pr <job_id>
 /ssh_plan <job_id>
 /approve <plan_id>
@@ -81,12 +89,12 @@ Security tools phase adds safe repo-first adapters for Gitleaks, Semgrep, Trivy,
 | State machine + audit JSONL | DONE | Demo writes every gate transition. |
 | Built-in safe URL scanner | DONE | HTTP headers/status checks; `.local` uses deterministic fixture. |
 | Built-in repo scanner | DONE | Redacted pattern checks only. |
-| PDF/JSON report | DONE | Minimal generated PDF + structured JSON. |
-| Telegram live bot handlers | DONE | Long polling via Telegram Bot API, inline buttons for demo/scan/status/report/payment; requires `TELEGRAM_BOT_TOKEN`. |
+| PDF/JSON report | DONE | Structured JSON + enterprise PDF; ISO/SOC/OWASP generator available. |
+| Telegram live bot handlers | DONE | Long polling via Telegram Bot API, real target/repo/scan/report/payment flows; requires `TELEGRAM_BOT_TOKEN`. |
 | Pakasir URL adapter | DONE | URL generation implemented. |
-| Pakasir API validation | MOCK/INCOMPLETE | Mock in `DEMO_MODE`; real API requires env secrets. |
-| External tools | INCOMPLETE/FUTURE | Availability checked; unavailable output never faked. |
-| Remediation PR | MOCK | Patch file generated; no auto-merge. |
+| Pakasir API validation | DONE/ENV-DEPENDENT | Real transaction detail validation when `PAKASIR_API_KEY` exists; sandbox/mock only in demo/no-key path. |
+| External tools | DONE/PARTIAL | Gitleaks/Semgrep/Trivy/Nuclei/Nikto/Nmap real paths; remaining OSS tools status-only/future. |
+| Remediation PR | DONE/SAFE-DRAFT | PR draft body generated; no external PR write or auto-merge without human approval. |
 | OpenSCAP | FUTURE | Enterprise compliance adapter. |
 
 ## External Security Tools
@@ -104,7 +112,7 @@ docker compose logs --tail=200
 
 ## Limitations
 
-Hackathon MVP. Not a legal compliance guarantee, not an offensive hacking bot, not multi-tenant SaaS yet.
+Not a legal compliance guarantee, not an offensive hacking bot, not multi-tenant SaaS yet. Docker runtime verification is environment-blocked on this VPS because Docker is not installed; PM2 deployment is live.
 
 Active web scanner gate adds `/web_scan <job_id>` with explicit approval, verified scope enforcement, rate limits, and Nuclei safe profile. See `docs/active-web-scanner-gate.md`.
 
