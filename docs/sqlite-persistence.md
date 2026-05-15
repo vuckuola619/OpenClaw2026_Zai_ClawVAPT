@@ -4,7 +4,7 @@ ClawVAPT persists runtime state so Telegram jobs, payment credits, and reports s
 
 ## Database
 
-Configured by `DATABASE_URL` (default `file:./data/clawvapt.db`). The app uses Node.js built-in SQLite runtime (`node:sqlite`) to avoid adding native npm dependencies.
+Configured by `DATABASE_URL` (default `file:./data/clawvapt.db`). The app uses `better-sqlite3` with WAL mode, foreign keys, and a 5s busy timeout.
 
 ## Tables
 

@@ -1,24 +1,23 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { createRequire } from 'node:module';
+import Database from 'better-sqlite3';
 import type { Job, ScanRun, ToolStatus } from '../types/index.js';
 
 type Row = Record<string, unknown>;
-type Statement = { run: (...args: unknown[]) => unknown; get: (...args: unknown[]) => Row | undefined; all: (...args: unknown[]) => Row[] };
-type Database = { exec: (sql: string) => void; prepare: (sql: string) => Statement };
 
 export interface QuotaSnapshot { userHash: string; scans: number; credits: number }
 export interface OrderSnapshot { orderId: string; userHash: string; amount: number; status: string; mode: string; credited: boolean }
 export interface ReportSnapshot { jobId: string; json: string; pdf: string }
 
 export class PersistentStore {
-  private db: Database;
+  private db: Database.Database;
 
   constructor(path = resolveDbPath(process.env.DATABASE_URL || 'file:./data/clawvapt.db')) {
     mkdirSync(dirname(path), { recursive: true });
-    const require = createRequire(import.meta.url);
-    const sqlite = require('node:sqlite') as { DatabaseSync: new (path: string) => Database };
-    this.db = new sqlite.DatabaseSync(path);
+    this.db = new Database(path);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
+    this.db.pragma('busy_timeout = 5000');
     this.migrate();
   }
 
@@ -109,7 +108,7 @@ export class PersistentStore {
 
   loadJobs(): Job[] {
     this.ensureRepoColumns();
-    return this.db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all().map(rowToJob);
+    return rows(this.db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all()).map(rowToJob);
   }
 
   saveQuota(userHash: string, scans: number, credits: number): void {
@@ -120,7 +119,7 @@ export class PersistentStore {
   }
 
   loadQuotas(): QuotaSnapshot[] {
-    return this.db.prepare('SELECT user_hash, scans, credits FROM quotas').all().map((r) => ({ userHash: str(r.user_hash), scans: num(r.scans), credits: num(r.credits) }));
+    return rows(this.db.prepare('SELECT user_hash, scans, credits FROM quotas').all()).map((r) => ({ userHash: str(r.user_hash), scans: num(r.scans), credits: num(r.credits) }));
   }
 
   saveOrder(order: OrderSnapshot): void {
@@ -131,12 +130,12 @@ export class PersistentStore {
   }
 
   isOrderCredited(orderId: string): boolean {
-    const row = this.db.prepare('SELECT credited FROM orders WHERE order_id=?').get(orderId);
-    return Boolean(num(row?.credited));
+    const found = row(this.db.prepare('SELECT credited FROM orders WHERE order_id=?').get(orderId));
+    return Boolean(num(found?.credited));
   }
 
   loadCreditedOrders(): Set<string> {
-    return new Set(this.db.prepare('SELECT order_id FROM orders WHERE credited=1').all().map((r) => str(r.order_id)));
+    return new Set(rows(this.db.prepare('SELECT order_id FROM orders WHERE credited=1').all()).map((r) => str(r.order_id)));
   }
 
   saveReport(jobId: string, report: { json: string; pdf: string }): void {
@@ -147,7 +146,7 @@ export class PersistentStore {
   }
 
   loadReports(): ReportSnapshot[] {
-    return this.db.prepare('SELECT job_id,json_path,pdf_path FROM reports').all().map((r) => ({ jobId: str(r.job_id), json: str(r.json_path), pdf: str(r.pdf_path) }));
+    return rows(this.db.prepare('SELECT job_id,json_path,pdf_path FROM reports').all()).map((r) => ({ jobId: str(r.job_id), json: str(r.json_path), pdf: str(r.pdf_path) }));
   }
 
   saveScanRun(run: ScanRun): void {
@@ -158,8 +157,8 @@ export class PersistentStore {
   }
 
   loadScanRuns(jobId?: string): ScanRun[] {
-    const rows = jobId ? this.db.prepare('SELECT * FROM scan_runs WHERE job_id=? ORDER BY created_at DESC').all(jobId) : this.db.prepare('SELECT * FROM scan_runs ORDER BY created_at DESC').all();
-    return rows.map(rowToScanRun);
+    const found = jobId ? this.db.prepare('SELECT * FROM scan_runs WHERE job_id=? ORDER BY created_at DESC').all(jobId) : this.db.prepare('SELECT * FROM scan_runs ORDER BY created_at DESC').all();
+    return rows(found).map(rowToScanRun);
   }
 
   private ensureRepoColumns(): void {
@@ -173,6 +172,8 @@ function resolveDbPath(input: string): string {
   if (input.startsWith('file:')) return resolve(input.slice('file:'.length));
   return resolve(input);
 }
+function rows(sqlRows: unknown[]): Row[] { return sqlRows.map((row) => row && typeof row === 'object' ? row as Row : {}); }
+function row(sqlRow: unknown): Row | undefined { return sqlRow && typeof sqlRow === 'object' ? sqlRow as Row : undefined; }
 function rowToJob(row: Row): Job {
   return {
     id: str(row.id),

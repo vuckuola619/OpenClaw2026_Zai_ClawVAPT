@@ -4,6 +4,7 @@
 node_modules/
 dist/
 data/
+backups/
 logs/*.log
 logs/*.jsonl
 !logs/demo_audit.jsonl
