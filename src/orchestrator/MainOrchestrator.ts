@@ -9,6 +9,7 @@ import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
+import { SecurityToolAdapters, type ToolRunResult } from '../tools/SecurityToolAdapters.js';
 import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
@@ -18,6 +19,7 @@ export class MainOrchestrator {
   audit = new AuditLogger();
   engine = new MultiAgentEngine(this.audit);
   payments = new PakasirAdapter();
+  securityTools = new SecurityToolAdapters(this.audit);
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
   creditedOrders = new Set<string>();
@@ -122,6 +124,10 @@ export class MainOrchestrator {
   }
 
   async hardening(jobId: string): Promise<AgentResult> { const job = this.mustJob(jobId); return (await this.engine.run('BlueTeamHardeningReportAgent', 'hardening_plan', { job })).result; }
+
+  async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
+
+  async runRepoSecuritySuite(userId = 'system'): Promise<ToolRunResult> { return this.securityTools.runRepoSuite('repo-security-suite', this.hashUser(userId)); }
 
   async demo(): Promise<{ job: Job; reports: { json: string; pdf: string }; transcript: string; tools: ToolStatus[] }> {
     const job = await this.createScan('demo-user', 'https://demo-owned-site.local');

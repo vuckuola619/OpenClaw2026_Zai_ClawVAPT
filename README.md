@@ -72,6 +72,8 @@ SQLite persistence stores jobs, quotas, Pakasir credited orders, and report path
 
 Production guardrails add per-user rate limiting, target URL safety policy, structured safe errors, and `/health`. See `docs/production-guardrails.md`.
 
+Security tools phase adds safe repo-first adapters for Gitleaks, Semgrep, Trivy, and builtin heuristics, plus Telegram `/tools` and `/repo_scan`. See `docs/security-tools-phase.md`.
+
 ## Real vs Mock
 
 | Capability | Status | Notes |

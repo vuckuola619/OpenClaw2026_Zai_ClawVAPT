@@ -43,6 +43,8 @@ export class TelegramBot {
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health') return this.health(chatId);
+      if (cmd === '/tools') return this.toolsStatus(chatId, userId);
+      if (cmd === '/repo_scan') return this.repoScan(chatId, userId);
       if (cmd === '/check_payment' || cmd === '/simulate_payment') return this.checkPayment(chatId, userId, args[0]);
       if (cmd === '/connect_repo' || cmd === '/create_pr' || cmd === '/ssh_plan' || cmd === '/approve') return this.sendMessage(chatId, 'Command skeleton ready. Demo mode uses patch-only remediation; no auto-merge, no SSH changes.', mainButtons());
       return this.sendMessage(chatId, 'Unknown command. Tap Help.', mainButtons());
@@ -61,6 +63,8 @@ export class TelegramBot {
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
       if (data === 'health') return this.health(chatId);
+      if (data === 'tools') return this.toolsStatus(chatId, userId);
+      if (data === 'repo_scan') return this.repoScan(chatId, userId);
       if (data.startsWith('verify:')) return this.verify(chatId, data.slice('verify:'.length));
       if (data.startsWith('run:')) return this.runScan(chatId, data.slice('run:'.length));
       if (data === 'my_jobs') return this.myJobs(chatId, userId);
@@ -181,6 +185,19 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Health: ${health.status}\n${checks}`, mainButtons());
   }
 
+  private async toolsStatus(chatId: string | number, userId: string): Promise<void> {
+    const tools = await this.orchestrator.toolsStatus(userId);
+    const lines = tools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`);
+    await this.sendMessage(chatId, `Security tools status:\n${lines.join('\n')}\n\nRecommended repo skills: secrets scan, JS/TS SAST, dependency/container scan, safe web headers.`, toolsButtons());
+  }
+
+  private async repoScan(chatId: string | number, userId: string): Promise<void> {
+    await this.sendMessage(chatId, 'Running safe repo security suite...');
+    const result = await this.orchestrator.runRepoSecuritySuite(userId);
+    const top = result.findings.slice(0, 8).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
+    await this.sendMessage(chatId, `Repo security suite complete\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, toolsButtons());
+  }
+
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /check_payment <order_id>', mainButtons());
     const result = await this.orchestrator.checkPayment(userId, orderId);
@@ -201,7 +218,9 @@ export class TelegramBot {
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
-      { command: 'health', description: 'Show service health' }
+      { command: 'health', description: 'Show service health' },
+      { command: 'tools', description: 'Show security tools status' },
+      { command: 'repo_scan', description: 'Run safe repo security suite' }
     ] });
   }
 
@@ -243,7 +262,8 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Health', callback_data: 'health' }], [{ text: 'Help', callback_data: 'help' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Scan', callback_data: 'repo_scan' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Health', callback_data: 'health' }], [{ text: 'Help', callback_data: 'help' }]] }; }
+function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Run Repo Scan', callback_data: 'repo_scan' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
