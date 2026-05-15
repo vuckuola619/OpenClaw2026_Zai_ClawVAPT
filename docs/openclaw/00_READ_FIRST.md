@@ -5,7 +5,7 @@ This document bundle is the source of truth for the OpenClaw implementation and 
 ## Project Identity
 
 - Project: ClawVAPT
-- Repository: https://github.com/vuckuola619/clawthon
+- Repository: https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 - Server project path: `/home/adm-bot/clawthon/`
 - Runtime env file: `/home/adm-bot/clawthon/.env`
 - Main interface: Telegram bot connected to OpenClaw

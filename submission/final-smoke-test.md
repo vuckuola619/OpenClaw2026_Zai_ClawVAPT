@@ -18,11 +18,11 @@ Full `npm test` hits a timeout in the broader historical suite after core tests,
 
 ## Public Repository
 
-https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT
+https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 
 ## Artifacts
 
-- `submission/OpenClaw2026_ZaiZai_ClawVAPT.pdf`
+- `submission/OpenClaw2026_Zai_ClawVAPT.pdf`
 - `submission/demo-script.md`
 - `submission/demo-shotlist.md`
 - `submission/devpost-fields.md`

@@ -52,8 +52,8 @@ Store only in `/home/adm-bot/clawthon/.env` or GitHub Secrets.
 ```env
 TELEGRAM_BOT_TOKEN=
 GITHUB_TOKEN=
-GITHUB_OWNER=vuckuola619
-GITHUB_REPO=clawthon
+GITHUB_OWNER=vuckuola619619
+GITHUB_REPO=OpenClaw2026_Zai_ClawVAPT
 PAYMENT_PROVIDER=pakasir
 PAKASIR_MODE=sandbox
 PAKASIR_SLUG=
@@ -84,7 +84,7 @@ TELEGRAM_SECURITY_OPS_CHAT_ID=
 
 For hackathon PAT fallback:
 
-- Repository selected: `vuckuola619/clawthon`
+- Repository selected: `vuckuola619/OpenClaw2026_Zai_ClawVAPT`
 - Contents: read/write
 - Pull requests: read/write
 - Issues: read/write

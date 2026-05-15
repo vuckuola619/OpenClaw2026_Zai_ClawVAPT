@@ -208,7 +208,7 @@ openclaw-workspace/agents/
 ## Quick Start
 
 ```bash
-git clone https://github.com/vuckuola619/clawthon.git
+git clone https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT.git
 cd clawthon
 npm install
 cp .env.example .env

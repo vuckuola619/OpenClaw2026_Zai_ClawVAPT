@@ -3,7 +3,7 @@
 ## Current Repo State
 
 - Local repo: `/home/adm-bot/clawthon`
-- Remote: `https://github.com/vuckuola619/clawthon`
+- Remote: `https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT`
 - Bot deployment: PM2 process `clawthon-demo`
 - Database: SQLite via `better-sqlite3`, WAL enabled
 - Real E2E completed against `https://letsmakeiteasy.work/` and `https://github.com/vuckuola619/sehatai-health-companion`

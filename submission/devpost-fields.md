@@ -2,7 +2,7 @@
 
 ## Project Name
 
-OpenClaw2026_ZaiZai_ClawVAPT
+OpenClaw2026_Zai_ClawVAPT
 
 ## Short Description
 
@@ -23,17 +23,17 @@ ClawVAPT supports active web checks, strict low-rate Nmap, standalone public Git
 
 ## GitHub Repository
 
-https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT
+https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 
 ## Demo Video
 
 TODO: paste YouTube Unlisted link here.
 
-Suggested title: OpenClaw2026_ZaiZai_ClawVAPT
+Suggested title: OpenClaw2026_Zai_ClawVAPT
 
 ## Pitch Deck
 
-submission/OpenClaw2026_ZaiZai_ClawVAPT.pdf
+submission/OpenClaw2026_Zai_ClawVAPT.pdf
 
 ## Live Deployment Link
 

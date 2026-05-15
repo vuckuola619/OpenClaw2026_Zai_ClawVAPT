@@ -6,7 +6,7 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 
-OUT = 'submission/OpenClaw2026_ZaiZai_ClawVAPT.pdf'
+OUT = 'submission/OpenClaw2026_Zai_ClawVAPT.pdf'
 W, H = landscape(A4)
 styles = getSampleStyleSheet()
 styles.add(ParagraphStyle(name='TitleBig', parent=styles['Title'], fontSize=30, leading=34, textColor=colors.HexColor('#0F172A'), alignment=TA_LEFT, spaceAfter=18))
@@ -50,12 +50,12 @@ doc = SimpleDocTemplate(OUT, pagesize=(W,H), rightMargin=38, leftMargin=38, topM
 story.append(Paragraph('ClawVAPT', styles['TitleBig']))
 story.append(Paragraph('Telegram-first multi-agent VAPT assistant with verified scope, QRIS credits, public GitHub scanning, and report automation.', styles['BodyBig']))
 story.append(Spacer(1, 16))
-story.append(tag('OpenClaw2026_ZaiZai_ClawVAPT', DARK))
+story.append(tag('OpenClaw2026_Zai_ClawVAPT', DARK))
 story.append(Spacer(1, 16))
 story.extend(bullets([
     'Built for security operators and small teams that need fast, safe vulnerability triage.',
     'Runs from Telegram: no dashboard needed for MVP.',
-    'Live bot: @capithon_bot | Repo: github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT',
+    'Live bot: @capithon_bot | Repo: github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT',
 ]))
 story.append(PageBreak())
 

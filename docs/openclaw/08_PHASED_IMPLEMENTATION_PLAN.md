@@ -9,7 +9,7 @@ Goal: prepare repo and confirm environment.
 Tasks:
 
 - cd `/home/adm-bot/clawthon/`
-- clone/pull `https://github.com/vuckuola619/clawthon`
+- clone/pull `https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT`
 - inspect files
 - read all docs under `docs/openclaw/`
 - create requirement matrix

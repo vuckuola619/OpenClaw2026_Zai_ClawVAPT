@@ -12,7 +12,7 @@ Runtime env:
 /home/adm-bot/clawthon/.env
 
 Repository:
-https://github.com/vuckuola619/clawthon
+https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 
 Mission:
 Read all docs under `/home/adm-bot/clawthon/docs/openclaw/`, analyze the requirements, review the current repo, implement missing parts phase-by-phase, test, commit, and deploy a working demo.

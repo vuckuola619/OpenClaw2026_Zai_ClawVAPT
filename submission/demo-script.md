@@ -1,6 +1,6 @@
 # ClawVAPT Demo Video Script — 2 Minutes
 
-Video title: `OpenClaw2026_ZaiZai_ClawVAPT`
+Video title: `OpenClaw2026_Zai_ClawVAPT`
 Target duration: 1:45–2:00
 Format: screen recording Telegram bot + quick report preview.
 
