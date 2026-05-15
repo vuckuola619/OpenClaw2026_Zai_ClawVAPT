@@ -99,7 +99,7 @@ export class TelegramBot {
       if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
-      if (data.startsWith('finishpay:')) return this.checkPayment(chatId, userId, data.slice('finishpay:'.length));
+      if (data.startsWith('finishpay:')) return this.completePaymentFromButton(chatId, userId, data.slice('finishpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
     } catch (error) {
       return this.sendMessage(chatId, formatSafeError(error), mainButtons());
@@ -397,12 +397,19 @@ export class TelegramBot {
     await this.sendMessage(chatId, text, paid ? mainButtons() : { inline_keyboard: [[{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
+  private async completePaymentFromButton(chatId: string | number, userId: string, orderId?: string): Promise<void> {
+    if (!orderId) return this.sendMessage(chatId, 'Missing order id.', mainButtons());
+    const demoLike = process.env.DEMO_MODE === 'true' || process.env.PAKASIR_MODE !== 'live';
+    if (demoLike) return this.simulatePayment(chatId, userId, orderId);
+    return this.checkPayment(chatId, userId, orderId);
+  }
+
   private async simulatePayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /simulate_payment <order_id>', mainButtons());
     const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const result = await this.orchestrator.simulatePayment(userId, orderId);
     const after = this.orchestrator.quotaSnapshotForUser(userId).credits;
-    await this.sendMessage(chatId, `✅ QRIS payment simulated\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nCredits: +${result.creditsAdded} → ${after} total${result.alreadyCredited ? '\nOrder already credited before.' : ''}\nPrevious credits: ${before}`, mainButtons());
+    await this.sendMessage(chatId, `✅ QRIS payment completed\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nCredits: +${result.creditsAdded} → ${after} total${result.alreadyCredited ? '\nOrder already credited before.' : ''}\nPrevious credits: ${before}`, mainButtons());
   }
 
   private async createPrDraft(chatId: string | number, jobId?: string): Promise<void> {
