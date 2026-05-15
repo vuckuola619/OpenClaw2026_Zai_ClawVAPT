@@ -62,3 +62,14 @@ Optional bridge for sanitized advisory review through local OpenClaw Gateway. It
 - Payments/credits are checked before paid scans.
 - Reports are redacted before delivery.
 - Audit events are persisted as JSONL.
+
+
+## Logical Agent Workspaces
+
+Detailed workspace specs live in:
+
+- `openclaw-workspace/agents/trust-verifier-payment/WORKSPACE.md`
+- `openclaw-workspace/agents/red-team-scanner/WORKSPACE.md`
+- `openclaw-workspace/agents/blue-team-reporter/WORKSPACE.md`
+
+They document each product agent's mission, owned tools, safety rules, and output contract.
