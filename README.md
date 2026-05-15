@@ -111,3 +111,5 @@ Active web scanner gate adds `/web_scan <job_id>` with explicit approval, verifi
 Enterprise deep web scan adds `/web_scan_deep <job_id>` with Nuclei deep non-destructive profile and controlled Nikto profile. See `docs/enterprise-deep-web-scan.md`.
 
 Vibe coding scan profiles add `/repo_scan` safe and `/repo_scan_deep` deep code scanning for AI-generated apps. See `docs/vibe-coding-scan-profiles.md`.
+
+Real target flow: `/scan <url>` + `/connect_repo <job_id> <github_url>` now attaches a GitHub repo to a web target; repo scans run on the cloned repo, not demo/backend code. See `docs/real-target-and-repo-flow.md`.

@@ -36,6 +36,9 @@ export class PersistentStore {
         credits INTEGER NOT NULL DEFAULT 0,
         findings_json TEXT NOT NULL DEFAULT '[]',
         order_id TEXT,
+        repo_url TEXT,
+        repo_path TEXT,
+        repo_commit TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -65,9 +68,10 @@ export class PersistentStore {
   }
 
   saveJob(job: Job): void {
+    this.ensureRepoColumns();
     this.db.prepare(`
-      INSERT INTO jobs (id,user_hash,target_url,verified,scope_locked,scope_host,state,free_scan_used,credits,findings_json,order_id,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+      INSERT INTO jobs (id,user_hash,target_url,verified,scope_locked,scope_host,state,free_scan_used,credits,findings_json,order_id,repo_url,repo_path,repo_commit,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         user_hash=excluded.user_hash,
         target_url=excluded.target_url,
@@ -79,11 +83,15 @@ export class PersistentStore {
         credits=excluded.credits,
         findings_json=excluded.findings_json,
         order_id=excluded.order_id,
+        repo_url=excluded.repo_url,
+        repo_path=excluded.repo_path,
+        repo_commit=excluded.repo_commit,
         updated_at=CURRENT_TIMESTAMP
-    `).run(job.id, job.userIdHash, job.targetUrl, bool(job.verified), bool(job.scopeLocked), job.scopeHost, job.state, bool(job.freeScanUsed), job.credits, JSON.stringify(job.findings), job.orderId || null);
+    `).run(job.id, job.userIdHash, job.targetUrl, bool(job.verified), bool(job.scopeLocked), job.scopeHost, job.state, bool(job.freeScanUsed), job.credits, JSON.stringify(job.findings), job.orderId || null, job.repoUrl || null, job.repoPath || null, job.repoCommit || null);
   }
 
   loadJobs(): Job[] {
+    this.ensureRepoColumns();
     return this.db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all().map(rowToJob);
   }
 
@@ -124,6 +132,12 @@ export class PersistentStore {
   loadReports(): ReportSnapshot[] {
     return this.db.prepare('SELECT job_id,json_path,pdf_path FROM reports').all().map((r) => ({ jobId: str(r.job_id), json: str(r.json_path), pdf: str(r.pdf_path) }));
   }
+
+  private ensureRepoColumns(): void {
+    for (const sql of ['ALTER TABLE jobs ADD COLUMN repo_url TEXT', 'ALTER TABLE jobs ADD COLUMN repo_path TEXT', 'ALTER TABLE jobs ADD COLUMN repo_commit TEXT']) {
+      try { this.db.exec(sql); } catch { /* column already exists */ }
+    }
+  }
 }
 
 function resolveDbPath(input: string): string {
@@ -142,7 +156,10 @@ function rowToJob(row: Row): Job {
     freeScanUsed: Boolean(num(row.free_scan_used)),
     credits: num(row.credits),
     findings: parseFindings(str(row.findings_json)),
-    orderId: row.order_id ? str(row.order_id) : undefined
+    orderId: row.order_id ? str(row.order_id) : undefined,
+    repoUrl: row.repo_url ? str(row.repo_url) : undefined,
+    repoPath: row.repo_path ? str(row.repo_path) : undefined,
+    repoCommit: row.repo_commit ? str(row.repo_commit) : undefined
   };
 }
 function parseFindings(raw: string): Job['findings'] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }

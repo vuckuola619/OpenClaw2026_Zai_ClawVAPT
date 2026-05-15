@@ -11,6 +11,7 @@ import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult, type RepoScanProfile } from '../tools/SecurityToolAdapters.js';
 import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
+import { GitHubRepoConnector } from '../tools/GitHubRepoConnector.js';
 import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
@@ -22,6 +23,7 @@ export class MainOrchestrator {
   payments = new PakasirAdapter();
   securityTools = new SecurityToolAdapters(this.audit);
   activeWebScanner = new ActiveWebScanner(this.audit);
+  repoConnector = new GitHubRepoConnector();
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
   creditedOrders = new Set<string>();
@@ -129,7 +131,26 @@ export class MainOrchestrator {
 
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
-  async runRepoSecuritySuite(userId = 'system', profile: RepoScanProfile = 'safe'): Promise<ToolRunResult> { return this.securityTools.runRepoSuite(`repo-security-suite-${profile}`, this.hashUser(userId), profile); }
+  async connectRepo(jobId: string, userId: string, repoUrl: string): Promise<Job> {
+    const job = this.mustJob(jobId);
+    if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    const repo = this.repoConnector.connect(job.id, repoUrl);
+    job.repoUrl = repo.repoUrl;
+    job.repoPath = repo.repoPath;
+    job.repoCommit = repo.commit;
+    job.state = 'REPO_CONNECTED';
+    this.store.saveJob(job);
+    await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'RECEIVE_REQUEST', 'REPO_CONNECTED', 'connect_repo', 'GitHubRepoConnector', 'DONE', { repo: `${repo.owner}/${repo.repo}` }, { commit: repo.commit });
+    return job;
+  }
+
+  async runRepoSecuritySuite(userId = 'system', profile: RepoScanProfile = 'safe', jobId?: string): Promise<ToolRunResult> {
+    if (!jobId) throw new Error('REPO_NOT_CONNECTED');
+    const job = this.mustJob(jobId);
+    if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    if (!job.repoPath) throw new Error('REPO_NOT_CONNECTED');
+    return new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
+  }
 
   activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }
 

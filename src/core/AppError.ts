@@ -11,6 +11,8 @@ export type AppErrorCode =
   | 'PAYMENT_REQUIRED'
   | 'JOB_NOT_FOUND'
   | 'REPORT_NOT_READY'
+  | 'REPO_CONNECT_FAILED'
+  | 'REPO_NOT_CONNECTED'
   | 'INTERNAL_ERROR';
 
 export class AppError extends Error {
@@ -33,6 +35,8 @@ export function toAppError(error: unknown): AppError {
   if (message === 'Invalid URL') return new AppError('INVALID_URL', message, 'Invalid URL. Use https://example.com.');
   if (message === 'UNSUPPORTED_PROTOCOL') return new AppError('UNSUPPORTED_PROTOCOL', message, 'Only http:// and https:// URLs are allowed.');
   if (message.startsWith('BLOCKED_TARGET')) return new AppError('BLOCKED_TARGET', message, 'Target blocked by safety policy. Public http(s) targets only.');
+  if (message === 'REPO_NOT_CONNECTED') return new AppError('REPO_NOT_CONNECTED', message, 'No GitHub repo connected for this job. Use /connect_repo <job_id> <github_url>.');
+  if (message === 'REPO_CONNECT_FAILED') return new AppError('REPO_CONNECT_FAILED', message, 'Could not clone GitHub repo. Confirm URL is public or accessible.');
   return new AppError('INTERNAL_ERROR', message, 'Request failed safely. Try /help or retry later.');
 }
 
