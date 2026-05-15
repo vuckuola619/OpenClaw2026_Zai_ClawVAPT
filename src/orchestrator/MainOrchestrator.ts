@@ -10,7 +10,7 @@ import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult } from '../tools/SecurityToolAdapters.js';
-import { ActiveWebScanner, type ActiveWebScanResult } from '../tools/ActiveWebScanner.js';
+import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
 import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
@@ -133,15 +133,15 @@ export class MainOrchestrator {
 
   activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }
 
-  async previewActiveWebScan(jobId: string): Promise<{ job: Job; tools: ToolStatus[] }> {
+  async previewActiveWebScan(jobId: string, profile: WebScanProfile = 'safe'): Promise<{ job: Job; tools: ToolStatus[]; profile: WebScanProfile }> {
     const job = this.mustJob(jobId);
     if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
-    return { job, tools: this.activeWebToolsStatus() };
+    return { job, tools: this.activeWebToolsStatus(), profile };
   }
 
-  async runActiveWebScan(jobId: string, userId: string, approved = false): Promise<ActiveWebScanResult> {
+  async runActiveWebScan(jobId: string, userId: string, approved = false, profile: WebScanProfile = 'safe'): Promise<ActiveWebScanResult> {
     const job = this.mustJob(jobId);
-    const result = await this.activeWebScanner.scan({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved });
+    const result = await this.activeWebScanner.scan({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved, profile });
     job.findings = [...job.findings, ...result.findings];
     job.state = 'ACTIVE_WEB_SCAN_COMPLETE';
     this.store.saveJob(job);

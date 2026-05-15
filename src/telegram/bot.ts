@@ -30,7 +30,7 @@ export class TelegramBot {
   async handleText(chatId: string | number, userId: string, text: string): Promise<void> {
     const [cmd, ...args] = text.trim().split(/\s+/);
     try {
-      this.limiter.assertAllowed(userId, cmd === '/scan' ? 3 : 1);
+      this.limiter.assertAllowed(userId, cmd === '/scan' || cmd === '/web_scan_deep' ? 3 : 1);
       if (cmd === '/start') return this.sendMainMenu(chatId);
       if (cmd === '/help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (cmd === '/demo') return this.runDemo(chatId);
@@ -45,7 +45,8 @@ export class TelegramBot {
       if (cmd === '/health') return this.health(chatId);
       if (cmd === '/tools') return this.toolsStatus(chatId, userId);
       if (cmd === '/repo_scan') return this.repoScan(chatId, userId);
-      if (cmd === '/web_scan') return this.webScanPreview(chatId, args[0]);
+      if (cmd === '/web_scan') return this.webScanPreview(chatId, args[0], 'safe');
+      if (cmd === '/web_scan_deep') return this.webScanPreview(chatId, args[0], 'deep');
       if (cmd === '/check_payment' || cmd === '/simulate_payment') return this.checkPayment(chatId, userId, args[0]);
       if (cmd === '/connect_repo' || cmd === '/create_pr' || cmd === '/ssh_plan' || cmd === '/approve') return this.sendMessage(chatId, 'Command skeleton ready. Demo mode uses patch-only remediation; no auto-merge, no SSH changes.', mainButtons());
       return this.sendMessage(chatId, 'Unknown command. Tap Help.', mainButtons());
@@ -57,7 +58,7 @@ export class TelegramBot {
   async handleCallback(queryId: string, chatId: string | number, userId: string, data = ''): Promise<void> {
     await this.answerCallback(queryId);
     try {
-      this.limiter.assertAllowed(userId, data.startsWith('run:') || data.startsWith('activeweb:') || data === 'scan_demo' ? 3 : 1);
+      this.limiter.assertAllowed(userId, data.startsWith('run:') || data.startsWith('activeweb:') || data.startsWith('deepweb:') || data === 'scan_demo' ? 3 : 1);
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'demo') return this.runDemo(chatId);
@@ -68,8 +69,10 @@ export class TelegramBot {
       if (data === 'repo_scan') return this.repoScan(chatId, userId);
       if (data.startsWith('verify:')) return this.verify(chatId, data.slice('verify:'.length));
       if (data.startsWith('run:')) return this.runScan(chatId, data.slice('run:'.length));
-      if (data.startsWith('webpreview:')) return this.webScanPreview(chatId, data.slice('webpreview:'.length));
-      if (data.startsWith('activeweb:')) return this.runActiveWebScan(chatId, userId, data.slice('activeweb:'.length));
+      if (data.startsWith('webpreview:')) return this.webScanPreview(chatId, data.slice('webpreview:'.length), 'safe');
+      if (data.startsWith('deeppreview:')) return this.webScanPreview(chatId, data.slice('deeppreview:'.length), 'deep');
+      if (data.startsWith('activeweb:')) return this.runActiveWebScan(chatId, userId, data.slice('activeweb:'.length), 'safe');
+      if (data.startsWith('deepweb:')) return this.runActiveWebScan(chatId, userId, data.slice('deepweb:'.length), 'deep');
       if (data === 'my_jobs') return this.myJobs(chatId, userId);
       if (data === 'latest') return this.latest(chatId, userId);
       if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
@@ -201,19 +204,21 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Repo security suite complete\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, toolsButtons());
   }
 
-  private async webScanPreview(chatId: string | number, jobId?: string): Promise<void> {
-    if (!jobId) return this.sendMessage(chatId, 'Usage: /web_scan <job_id>', mainButtons());
-    const preview = await this.orchestrator.previewActiveWebScan(jobId);
-    const tools = preview.tools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`).join('\n');
-    await this.sendMessage(chatId, `Active web scan requires explicit approval.\n\nJob: ${preview.job.id}\nTarget: ${preview.job.targetUrl}\nScope: ${preview.job.scopeHost}\n\nEnabled profile:\n${tools}\n\nThis runs built-in headers check + Nuclei safe profile only. Nikto/Nmap remain disabled.`, activeWebApproveButtons(preview.job.id));
+  private async webScanPreview(chatId: string | number, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, profile === 'deep' ? 'Usage: /web_scan_deep <job_id>' : 'Usage: /web_scan <job_id>', mainButtons());
+    const preview = await this.orchestrator.previewActiveWebScan(jobId, profile);
+    const profileTools = preview.tools.filter((t) => profile === 'deep' ? ['NucleiDeepProfile','NiktoDeepProfile','Nmap'].includes(t.name) : ['NucleiSafeProfile','Nmap'].includes(t.name));
+    const tools = profileTools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`).join('\n');
+    const warning = profile === 'deep' ? 'Enterprise deep profile enables CVE/KEV + XSS/SQLi detection and controlled Nikto. It still blocks DoS, fuzzing, brute force, default-login, destructive RCE, SSRF, and LFI.' : 'Safe profile runs headers check + low-noise Nuclei templates only.';
+    await this.sendMessage(chatId, `Active web scan requires explicit approval.\n\nJob: ${preview.job.id}\nTarget: ${preview.job.targetUrl}\nScope: ${preview.job.scopeHost}\nProfile: ${profile.toUpperCase()}\n\nEnabled profile:\n${tools}\n\n${warning}`, activeWebApproveButtons(preview.job.id, profile));
   }
 
-  private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string): Promise<void> {
+  private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
-    await this.sendMessage(chatId, `Approved. Running active web safe profile for ${jobId}...`);
-    const result = await this.orchestrator.runActiveWebScan(jobId, userId, true);
-    const top = result.findings.slice(0, 8).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from safe web profile.';
-    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
+    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...`);
+    const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
+    const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
+    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
   }
 
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
@@ -230,6 +235,7 @@ export class TelegramBot {
       { command: 'scan', description: 'Create scan job: /scan https://site.com' },
       { command: 'verify', description: 'Verify ownership: /verify JOB-id' },
       { command: 'web_scan', description: 'Approve active web safe scan' },
+      { command: 'web_scan_deep', description: 'Approve enterprise deep web scan' },
       { command: 'status', description: 'Check job status' },
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
@@ -284,7 +290,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
 function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Demo', callback_data: 'demo' }, { text: 'Scan Demo Site', callback_data: 'scan_demo' }], [{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Scan', callback_data: 'repo_scan' }], [{ text: 'Pay / Top Up', callback_data: 'pay' }, { text: 'Health', callback_data: 'health' }], [{ text: 'Help', callback_data: 'help' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Run Repo Scan', callback_data: 'repo_scan' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Scan', callback_data: `webpreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
-function activeWebApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Approve Active Web Scan', callback_data: `activeweb:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
+function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'Approve Enterprise Deep Scan' : 'Approve Active Web Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }
