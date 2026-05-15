@@ -66,6 +66,8 @@ ClawVAPT runs a code-level multi-agent engine inside the backend service:
 
 Each agent run writes start/complete/error JSONL audit events. OpenClaw is the server operator/orchestration environment; the product backend is a Node.js Telegram bot using this multi-agent engine.
 
+Optional bridge mode can publish sanitized agent envelopes to the local OpenClaw Gateway over loopback WebSocket (`chat.send`) without reusing the OpenClaw Telegram token. See `docs/openclaw-bridge.md`.
+
 ## Real vs Mock
 
 | Capability | Status | Notes |

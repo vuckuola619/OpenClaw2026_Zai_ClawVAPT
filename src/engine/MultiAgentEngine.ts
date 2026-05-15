@@ -4,11 +4,13 @@ import { TrustVerifierPaymentAgent } from '../agents/TrustVerifierPaymentAgent.j
 import { RedTeamRepoScannerAgent } from '../agents/RedTeamRepoScannerAgent.js';
 import { BlueTeamHardeningReportAgent } from '../agents/BlueTeamHardeningReportAgent.js';
 import type { AgentEnvelope, AgentName, AgentRuntimeContext, AgentTask, ScanAgentResult } from '../agents/types.js';
+import { OpenClawBridge } from '../openclaw/OpenClawBridge.js';
 
 export class MultiAgentEngine {
   readonly trust = new TrustVerifierPaymentAgent();
   readonly red = new RedTeamRepoScannerAgent();
   readonly blue = new BlueTeamHardeningReportAgent();
+  readonly bridge = new OpenClawBridge();
 
   constructor(private audit = new AuditLogger()) {}
 
@@ -20,12 +22,29 @@ export class MultiAgentEngine {
       result = await this.execute(agent, task, context);
       const completed = new Date().toISOString();
       await this.audit.transition(context.job.id, context.job.userIdHash, agent, `AGENT:${agent}:${task}`, result.next_state, 'agent_complete', 'MultiAgentEngine', result.status, { task }, { decision: result.decision, findings: result.findings.length });
-      return { agent, task, job_id: context.job.id, status: result.status, result: result as T, started_at: started, completed_at: completed, redaction_applied: true };
+      const envelope = { agent, task, job_id: context.job.id, status: result.status, result: result as T, started_at: started, completed_at: completed, redaction_applied: true } satisfies AgentEnvelope<T>;
+      const bridge = await this.bridge.publishAgentEnvelope(envelope, this.safeBridgeSummary(agent, task, result));
+      await this.audit.transition(context.job.id, context.job.userIdHash, 'OpenClawBridge', result.next_state, result.next_state, 'openclaw_bridge', 'OpenClawGateway', bridge.status === 'sent' ? 'DONE' : bridge.status === 'failed' ? 'ERROR' : 'MOCK', { agent, task }, { ...bridge });
+      return envelope;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.audit.transition(context.job.id, context.job.userIdHash, agent, `AGENT:${agent}:${task}`, 'ERROR', 'agent_error', 'MultiAgentEngine', 'ERROR', { task }, { error: message });
       throw error;
     }
+  }
+
+  private safeBridgeSummary(agent: AgentName, task: AgentTask, result: AgentResult | ScanAgentResult): string {
+    const correlations = 'correlations' in result ? result.correlations.length : 0;
+    return JSON.stringify({
+      agent,
+      task,
+      status: result.status,
+      next_state: result.next_state,
+      decision: result.decision,
+      findings: result.findings.map((finding) => ({ id: finding.id, severity: finding.severity, title: finding.title })),
+      correlations,
+      redaction_applied: true
+    });
   }
 
   private async execute(agent: AgentName, task: AgentTask, context: AgentRuntimeContext): Promise<AgentResult | ScanAgentResult> {

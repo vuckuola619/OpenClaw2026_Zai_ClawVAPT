@@ -4,13 +4,13 @@
 /help
 /demo
 /scan https://demo-owned-site.local
-/verify JOB-fc719285
-/status JOB-fc719285
-/report JOB-fc719285
-/harden JOB-fc719285
+/verify JOB-d0b5c1e4
+/status JOB-d0b5c1e4
+/report JOB-d0b5c1e4
+/harden JOB-d0b5c1e4
 /pay
-/check_payment CLWV-20260515-9285
-/simulate_payment CLWV-20260515-9285
+/check_payment CLWV-20260515-c1e4
+/simulate_payment CLWV-20260515-c1e4
 
 Reports: reports/sample_report.json, reports/sample_report.pdf
 Safety: ownership verified, scope locked, secrets redacted.

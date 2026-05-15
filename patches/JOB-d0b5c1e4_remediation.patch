@@ -1,0 +1,8 @@
+MOCK_PR PATCH for JOB-d0b5c1e4
+
+- Add security headers middleware
+- Add SECURITY.md
+- Add Dependabot config
+- Add Docker HEALTHCHECK/USER
+
+Approval required before applying. Retest required before FIXED.
