@@ -82,6 +82,14 @@ def para(text: str, style):
     return Paragraph(safe(text), style)
 
 
+def cell(text: object, style):
+    return Paragraph(safe(text), style)
+
+
+def table_cells(rows: list[list[object]], style):
+    return [[cell(value, style) for value in row] for row in rows]
+
+
 def page_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
@@ -124,7 +132,7 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
         ["Commit", target.get("repo_commit", "-")],
         ["Ownership Verification", f"{auth.get('verification_method','-')} at {auth.get('verified_at','-')}"],
     ]
-    t = Table(meta, colWidths=[4.2*cm, 12.0*cm])
+    t = Table(table_cells(meta, styles["BodySmall"]), colWidths=[4.2*cm, 12.0*cm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (0,-1), colors.HexColor("#e2e8f0")),
         ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#cbd5e1")),
@@ -144,7 +152,7 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
     risk_table = [["Severity", "Count", "Priority", "SLA"]]
     for sev in SEVERITY_ORDER:
         risk_table.append([sev, str(summary.get(sev, 0)), priority(sev), sla(sev)])
-    rt = Table(risk_table, colWidths=[4*cm, 3*cm, 3*cm, 4*cm])
+    rt = Table(table_cells(risk_table, styles["BodySmall"]), colWidths=[4*cm, 3*cm, 3*cm, 4*cm])
     rt.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -163,7 +171,7 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
         ["Scope Locked", str(auth.get("scope_locked"))],
         ["Verification", f"{auth.get('verification_method')} / {auth.get('verified_at')}"],
     ]
-    st = Table(scope_rows, colWidths=[4.2*cm, 12.0*cm])
+    st = Table(table_cells(scope_rows, styles["BodySmall"]), colWidths=[4.2*cm, 12.0*cm])
     st.setStyle(TableStyle([("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#cbd5e1")), ("BACKGROUND", (0,0), (0,-1), colors.HexColor("#f1f5f9")), ("FONTSIZE", (0,0), (-1,-1), 8.5), ("VALIGN", (0,0), (-1,-1), "TOP")]))
     story.append(st)
 
@@ -181,7 +189,7 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
     tool_rows = [["Tool", "Status", "Mode"]]
     for tool in report.get("tool_matrix", [])[:20]:
         tool_rows.append([tool.get("name", "-"), tool.get("status", "-"), tool.get("mode", "-")])
-    tt = Table(tool_rows, colWidths=[4.2*cm, 2.5*cm, 9.5*cm])
+    tt = Table(table_cells(tool_rows, styles["BodySmall"]), colWidths=[4.2*cm, 2.5*cm, 9.5*cm])
     tt.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f172a")), ("TEXTCOLOR", (0,0), (-1,0), colors.white), ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#cbd5e1")), ("FONTSIZE", (0,0), (-1,-1), 7.8), ("VALIGN", (0,0), (-1,-1), "TOP")]))
     story.append(tt)
 
@@ -190,8 +198,8 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
     control_rows = [["Finding", "Severity", "ISO/IEC 27001:2022", "SOC 2", "OWASP"]]
     for f in findings:
         iso, soc, owasp = controls_for(f)
-        control_rows.append([f.get("title", "-")[:64], f.get("severity", "-"), iso, soc, owasp])
-    ct = Table(control_rows, colWidths=[5.0*cm, 1.7*cm, 3.4*cm, 3.0*cm, 3.6*cm], repeatRows=1)
+        control_rows.append([f.get("title", "-"), f.get("severity", "-"), iso, soc, owasp])
+    ct = Table(table_cells(control_rows, styles["BodySmall"]), colWidths=[4.4*cm, 1.7*cm, 3.5*cm, 3.2*cm, 3.6*cm], repeatRows=1)
     ct.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f172a")), ("TEXTCOLOR", (0,0), (-1,0), colors.white), ("GRID", (0,0), (-1,-1), 0.2, colors.HexColor("#cbd5e1")), ("FONTSIZE", (0,0), (-1,-1), 6.8), ("VALIGN", (0,0), (-1,-1), "TOP")]))
     story.append(ct)
 
@@ -225,7 +233,7 @@ def build(report_json: Path, out_pdf: Path, out_md: Path | None = None) -> None:
         ["P3", "Enable Dependabot or equivalent dependency monitoring and establish patch SLA.", "Engineering", "60 days"],
         ["Manual", "Perform authenticated business-logic review: IDOR, workflow bypass, tenant isolation, payment/API misuse.", "Security / QA", "Next test window"],
     ])
-    rr = Table(roadmap_rows, colWidths=[1.8*cm, 9.3*cm, 3.0*cm, 2.2*cm], repeatRows=1)
+    rr = Table(table_cells(roadmap_rows, styles["BodySmall"]), colWidths=[1.8*cm, 8.7*cm, 3.5*cm, 2.2*cm], repeatRows=1)
     rr.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f172a")), ("TEXTCOLOR", (0,0), (-1,0), colors.white), ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#cbd5e1")), ("FONTSIZE", (0,0), (-1,-1), 7.4), ("VALIGN", (0,0), (-1,-1), "TOP")]))
     story.append(rr)
 

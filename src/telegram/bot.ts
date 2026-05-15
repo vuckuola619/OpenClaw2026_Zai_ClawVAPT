@@ -38,7 +38,7 @@ export class TelegramBot {
       if (cmd === '/scan') return this.createScan(chatId, userId, args.join(' '));
       if (cmd === '/verify') return this.verify(chatId, args[0]);
       if (cmd === '/challenge') return this.challenge(chatId, args[0]);
-      if (cmd === '/status') return this.status(chatId, args[0]);
+      if (cmd === '/status') return this.status(chatId, args[0], userId);
       if (cmd === '/my_jobs') return this.myJobs(chatId, userId);
       if (cmd === '/latest') return this.latest(chatId, userId);
       if (cmd === '/report') return this.report(chatId, args[0]);
@@ -71,7 +71,7 @@ export class TelegramBot {
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'scan_help') return this.sendMessage(chatId, 'Real target flow:\n/scan https://app.example.com\n/verify JOB-xxxx\n/web_scan JOB-xxxx\n/web_scan_deep JOB-xxxx\n/nmap_scan JOB-xxxx', mainButtons());
-      if (data === 'repo_help') return this.sendMessage(chatId, 'GitHub repo flow:\n/connect_repo JOB-xxxx https://github.com/owner/repo\n/repo_scan JOB-xxxx\n/repo_scan_deep JOB-xxxx', mainButtons());
+      if (data === 'repo_help') return this.sendMessage(chatId, 'Code/GitHub scan flow:\n1) Create/verify web target first: /scan https://your-site.com then /verify JOB-xxxx\n2) Connect repo: /connect_repo JOB-xxxx https://github.com/owner/repo\n3) Safe code scan: /repo_scan JOB-xxxx (cost 5 credits)\n4) Deep code scan: /repo_scan_deep JOB-xxxx (cost 10 credits)\n\nOnly GitHub repos are accepted. Private repos need accessible credentials later; current flow supports public GitHub clone.', mainButtons());
       if (data === 'report_help') return this.sendMessage(chatId, 'Report flow:\n/status JOB-xxxx\n/report JOB-xxxx\n/manual_review JOB-xxxx\n/export JOB-xxxx', mainButtons());
       if (data === 'demo') return this.runDemo(chatId);
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
@@ -93,7 +93,7 @@ export class TelegramBot {
       if (data.startsWith('nmapstrict:')) return this.runStrictNmapScan(chatId, userId, data.slice('nmapstrict:'.length));
       if (data === 'my_jobs') return this.myJobs(chatId, userId);
       if (data === 'latest') return this.latest(chatId, userId);
-      if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
+      if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length), userId);
       if (data.startsWith('report:')) return this.report(chatId, data.slice('report:'.length));
       if (data.startsWith('export:')) return this.exportBundle(chatId, data.slice('export:'.length));
       if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
@@ -122,7 +122,8 @@ export class TelegramBot {
   }
 
   private async sendMainMenu(chatId: string | number): Promise<void> {
-    return this.sendMessage(chatId, '🔒 ClawVAPT\nReal target + GitHub repo VAPT. Demo is sandbox only.\n\nFlow:\n1) /scan <url>\n2) /verify <job_id>\n3) /connect_repo <job_id> <github_url>\n4) run safe/deep scans\n5) /report or /export\n\nChoose action:', mainButtons());
+    const q = this.orchestrator.quotaSnapshotForUser(String(chatId));
+    return this.sendMessage(chatId, `🔒 ClawVAPT\nCredits: ${q.credits} (safe scan costs 5, deep scan costs 10). New users start with 10 credits.\n\nFlow:\n1) /scan <url>\n2) /verify <job_id> once per URL\n3) /connect_repo <job_id> https://github.com/owner/repo\n4) run /web_scan, /web_scan_deep, /repo_scan, or /repo_scan_deep\n5) /report or /export\n\nVerified URL limit: 5 scan runs. Top up with /pay (+10 credits).`, mainButtons());
   }
 
   private async runDemo(chatId: string | number): Promise<void> {
@@ -136,9 +137,10 @@ export class TelegramBot {
   private async createScan(chatId: string | number, userId: string, rawUrl: string): Promise<void> {
     if (!rawUrl) return this.sendMessage(chatId, 'Usage: /scan https://example.com', mainButtons());
     const job = await this.orchestrator.createScan(userId, rawUrl);
+    if (job.verified) return this.sendMessage(chatId, `Scan job created: ${job.id}\n\n✅ URL already verified for your account. Scope reused: ${job.scopeHost}\nNo need to verify again. Limit: 5 scan runs per verified URL.\nCredits: ${job.credits}\n\nNext: /web_scan ${job.id} or /connect_repo ${job.id} https://github.com/owner/repo`, runButtons(job.id));
     const challenge = await this.orchestrator.createChallenge(job);
     const token = challenge.evidence[0]?.summary || 'challenge generated';
-    await this.sendMessage(chatId, `Scan job created: ${job.id}\n\nOwnership challenge:\n${token}\n\nScanner is blocked until verification and scope lock.`, verifyButtons(job.id));
+    await this.sendMessage(chatId, `Scan job created: ${job.id}\nCredits: ${job.credits}\n\nOwnership challenge:\n${token}\n\nScanner is blocked until verification and scope lock. After verified once, future jobs for same URL reuse verification.`, verifyButtons(job.id));
   }
 
   private async challenge(chatId: string | number, jobId?: string): Promise<void> {
@@ -172,7 +174,7 @@ export class TelegramBot {
     }
   }
 
-  private async status(chatId: string | number, jobId?: string): Promise<void> {
+  private async status(chatId: string | number, jobId?: string, userId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /status <job_id>', mainButtons());
     const job = this.orchestrator.getJob(jobId);
     if (!job) return this.sendMessage(chatId, 'Job not found in current process memory.', mainButtons());
@@ -180,7 +182,9 @@ export class TelegramBot {
     const lastRepo = runs.find((r) => r.type === 'repo');
     const lastWeb = runs.find((r) => r.type === 'web');
     const sev = severitySummary(job.findings);
-    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nWeb target: ${job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
+    const q = userId ? this.orchestrator.quotaSnapshotForUser(userId) : { credits: job.credits };
+    const usage = this.orchestrator.scopeScanUsage(job.id);
+    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nCredits: ${q.credits}\nScan usage for URL: ${usage.used}/${usage.limit}\nWeb target: ${job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
   }
 
   private async myJobs(chatId: string | number, userId: string): Promise<void> {
@@ -193,7 +197,7 @@ export class TelegramBot {
   private async latest(chatId: string | number, userId: string): Promise<void> {
     const job = this.orchestrator.latestJobForUser(userId);
     if (!job) return this.sendMessage(chatId, 'No latest job found.', mainButtons());
-    return this.status(chatId, job.id);
+    return this.status(chatId, job.id, userId);
   }
 
   private async report(chatId: string | number, jobId?: string): Promise<void> {
@@ -256,7 +260,8 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Running ${profile} repo security suite for ${jobId}...`);
     const result = await this.orchestrator.runRepoSecuritySuite(userId, profile, jobId);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
-    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${jobId}\nProfile: ${result.profile.toUpperCase()}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, repoButtons(jobId));
+    const q = this.orchestrator.quotaSnapshotForUser(userId);
+    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${jobId}\nProfile: ${result.profile.toUpperCase()}\nCost: ${profile === 'deep' ? 10 : 5} credits\nCredits left: ${q.credits}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, repoButtons(jobId));
   }
 
   private async webScanPreview(chatId: string | number, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
@@ -264,7 +269,7 @@ export class TelegramBot {
     const preview = await this.orchestrator.previewActiveWebScan(jobId, profile);
     const profileTools = preview.tools.filter((t) => profile === 'deep' ? ['NucleiDeepProfile','NiktoDeepProfile','Nmap'].includes(t.name) : ['NucleiSafeProfile','Nmap'].includes(t.name));
     const tools = profileTools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`).join('\n');
-    const warning = profile === 'deep' ? 'Enterprise deep profile enables CVE/KEV + XSS/SQLi detection and controlled Nikto. It can generate logs, WAF/SIEM alerts, and target-side errors. It still blocks DoS, fuzzing, brute force, default-login, destructive RCE, SSRF, and LFI.' : 'Safe profile runs headers check + low-noise Nuclei templates only. It can still generate access logs and security alerts.';
+    const warning = profile === 'deep' ? 'Enterprise deep profile costs 10 credits. It enables CVE/KEV + XSS/SQLi detection and controlled Nikto. It can generate logs, WAF/SIEM alerts, and target-side errors. It still blocks DoS, fuzzing, brute force, default-login, destructive RCE, SSRF, and LFI.' : 'Safe profile costs 5 credits. It runs headers check + low-noise Nuclei templates only. It can still generate access logs and security alerts.';
     const agreement = 'By approving, you confirm this is an authorized environment, you have permission to test this target, you accept scan noise/logging risk, and you agree ClawVAPT must stay within locked scope.';
     await this.sendMessage(chatId, `Active web scan requires explicit approval + agreement.\n\nJob: ${preview.job.id}\nTarget: ${preview.job.targetUrl}\nScope: ${preview.job.scopeHost}\nProfile: ${profile.toUpperCase()}\n\nEnabled profile:\n${tools}\n\nRisk note:\n${warning}\n\nAgreement:\n${agreement}`, activeWebApproveButtons(preview.job.id, profile));
   }
@@ -291,13 +296,15 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...`);
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
-    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
+    const q = this.orchestrator.quotaSnapshotForUser(userId);
+    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: ${profile === 'deep' ? 10 : 5} credits\nCredits left: ${q.credits}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
   }
 
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
     if (!orderId) return this.sendMessage(chatId, 'Usage: /check_payment <order_id>', mainButtons());
     const result = await this.orchestrator.checkPayment(userId, orderId);
-    await this.sendMessage(chatId, `Payment status: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}${result.alreadyCredited ? '\nOrder already credited before.' : ''}`, mainButtons());
+    const q = this.orchestrator.quotaSnapshotForUser(userId);
+    await this.sendMessage(chatId, `Payment status: ${result.status}\nMode: ${result.mode}\nCredits added: ${result.creditsAdded}\nCredits now: ${q.credits}${result.alreadyCredited ? '\nOrder already credited before.' : ''}`, mainButtons());
   }
 
   private async simulatePayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {

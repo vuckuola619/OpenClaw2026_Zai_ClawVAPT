@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { AgentResult, Finding, Job, ScanRun, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
-import { QuotaStore } from '../core/QuotaStore.js';
+import { DEEP_SCAN_COST, QuotaStore, SAFE_SCAN_COST } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
 import { CleanupService, type CleanupResult } from '../core/CleanupService.js';
 import { OwnershipVerifier } from '../core/OwnershipVerifier.js';
@@ -47,10 +47,13 @@ export class MainOrchestrator {
 
   async createScan(userId: string, targetUrl: string): Promise<Job> {
     const safeUrl = validatePublicTarget(targetUrl);
-    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: this.hashUser(userId), targetUrl: safeUrl.toString(), verified: false, scopeLocked: false, scopeHost: '', state: 'RECEIVE_REQUEST', freeScanUsed: false, credits: 0, findings: [] };
+    const userHash = this.hashUser(userId);
+    const quota = this.quota.ensureUser(userHash);
+    const reusable = this.findVerifiedScope(userHash, safeUrl.hostname.toLowerCase());
+    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: userHash, targetUrl: safeUrl.toString(), verified: Boolean(reusable), scopeLocked: Boolean(reusable), scopeHost: reusable?.scopeHost || '', state: reusable ? 'LOCK_SCOPE' : 'RECEIVE_REQUEST', freeScanUsed: false, credits: quota.credits, findings: [], ownershipToken: reusable?.ownershipToken, verificationMethod: reusable?.verificationMethod, verifiedAt: reusable?.verifiedAt };
     this.jobs.set(job.id, job);
     this.store.saveJob(job);
-    await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'START', 'RECEIVE_REQUEST', 'create_job', 'telegram', 'DONE', { targetUrl }, { job_id: job.id });
+    await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'START', job.state, reusable ? 'create_job_reuse_verified_scope' : 'create_job', 'telegram', 'DONE', { targetUrl }, { job_id: job.id, credits: quota.credits, reused_verification: Boolean(reusable) });
     return job;
   }
 
@@ -62,6 +65,10 @@ export class MainOrchestrator {
   }
 
   latestJobForUser(userId: string): Job | undefined { return this.listJobsForUser(userId, 1)[0]; }
+
+  quotaSnapshotForUser(userId: string) { return this.quota.ensureUser(this.hashUser(userId)); }
+
+  scopeScanUsage(jobId: string): { used: number; limit: number } { const job = this.mustJob(jobId); return { used: this.scansForScope(job), limit: Number(process.env.MAX_SCANS_PER_VERIFIED_SCOPE || 5) }; }
 
   async createChallenge(job: Job): Promise<AgentResult> {
     const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'challenge', { job });
@@ -101,10 +108,11 @@ export class MainOrchestrator {
   async runApprovedScan(jobId: string): Promise<{ job: Job; reports: { json: string; pdf: string }; correlations: Correlation[]; tools: ToolStatus[] }> {
     const job = this.mustJob(jobId);
     if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
-    const q = this.quota.check(job.userIdHash);
+    this.assertScanLimit(job);
+    const q = this.quota.check(job.userIdHash, SAFE_SCAN_COST);
     if (q.allowed) {
-      this.quota.consume(job.userIdHash);
-      await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'LOCK_SCOPE', 'CHECK_QUOTA_OR_PAYMENT', q.reason === 'FREE' ? 'first_scan_free' : 'credits_scan', 'QuotaStore', 'DONE', {}, q);
+      this.quota.consume(job.userIdHash, SAFE_SCAN_COST);
+      await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'LOCK_SCOPE', 'CHECK_QUOTA_OR_PAYMENT', 'credits_scan', 'QuotaStore', 'DONE', {}, q);
     } else {
       const payment = await this.engine.trust.createPayment(job);
       this.store.saveJob(job);
@@ -112,6 +120,7 @@ export class MainOrchestrator {
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'payment_gate', 'PakasirAdapter', payment.status, {}, { orderId: job.orderId });
       throw new Error(`PAYMENT_REQUIRED:${job.orderId}`);
     }
+    job.credits = this.quota.snapshot(job.userIdHash).credits;
     const scanEnvelope = await this.engine.run<import('../agents/types.js').ScanAgentResult>('RedTeamRepoScannerAgent', 'scan', { job });
     const scan = scanEnvelope.result;
     const patch = await this.engine.blue.patch(job);
@@ -209,7 +218,9 @@ export class MainOrchestrator {
     if (!jobId) throw new Error('REPO_NOT_CONNECTED');
     const job = this.mustJob(jobId);
     if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
     if (!job.repoPath) throw new Error('REPO_NOT_CONNECTED');
+    this.chargeForScan(job, profile === 'deep' ? DEEP_SCAN_COST : SAFE_SCAN_COST);
     const result = await new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
     job.findings = mergeFindings(job.findings, result.findings);
     job.state = `REPO_SCAN_${profile.toUpperCase()}_COMPLETE`;
@@ -229,6 +240,9 @@ export class MainOrchestrator {
 
   async runActiveWebScan(jobId: string, userId: string, approved = false, profile: WebScanProfile = 'safe'): Promise<ActiveWebScanResult> {
     const job = this.mustJob(jobId);
+    if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
+    this.chargeForScan(job, profile === 'deep' ? DEEP_SCAN_COST : SAFE_SCAN_COST);
     const result = await this.activeWebScanner.scan({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved, profile });
     job.findings = mergeFindings(job.findings, result.findings);
     job.state = `ACTIVE_WEB_SCAN_${profile.toUpperCase()}_COMPLETE`;
@@ -240,6 +254,9 @@ export class MainOrchestrator {
 
   async runStrictNmapScan(jobId: string, userId: string, approved = false) {
     const job = this.mustJob(jobId);
+    if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
+    this.chargeForScan(job, SAFE_SCAN_COST);
     const result = await this.activeWebScanner.scanNmapStrict({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved });
     job.findings = mergeFindings(job.findings, result.findings);
     job.state = 'STRICT_NMAP_SCAN_COMPLETE';
@@ -281,13 +298,37 @@ export class MainOrchestrator {
     this.scanRunsByJob.set(run.jobId, [run, ...(this.scanRunsByJob.get(run.jobId) || [])]);
   }
 
+  private findVerifiedScope(userHash: string, host: string): Job | undefined {
+    return [...this.jobs.values()].find((job) => job.userIdHash === userHash && job.verified && job.scopeLocked && job.scopeHost === host);
+  }
+
+  private scansForScope(job: Job): number {
+    return [...this.jobs.values()]
+      .filter((candidate) => candidate.userIdHash === job.userIdHash && (candidate.scopeHost || new URL(candidate.targetUrl).hostname.toLowerCase()) === (job.scopeHost || new URL(job.targetUrl).hostname.toLowerCase()))
+      .reduce((total, candidate) => total + (this.scanRunsByJob.get(candidate.id) || []).length, 0);
+  }
+
+  private assertScanLimit(job: Job): void {
+    const limit = Number(process.env.MAX_SCANS_PER_VERIFIED_SCOPE || 5);
+    if (this.scansForScope(job) >= limit) throw new Error('SCAN_LIMIT_REACHED');
+  }
+
+  private chargeForScan(job: Job, cost: number): void {
+    this.assertScanLimit(job);
+    const q = this.quota.check(job.userIdHash, cost);
+    if (!q.allowed) throw new Error(`PAYMENT_REQUIRED:${job.orderId || 'TOPUP'}`);
+    this.quota.consume(job.userIdHash, cost);
+    job.credits = this.quota.snapshot(job.userIdHash).credits;
+    this.store.saveJob(job);
+  }
+
   async demo(): Promise<{ job: Job; reports: { json: string; pdf: string }; transcript: string; tools: ToolStatus[] }> {
     const job = await this.createScan('demo-user', 'https://demo-owned-site.local');
     await this.createChallenge(job);
     await this.verifyDemo(job.id);
-    const secondBefore = this.quota.check(job.userIdHash);
+    const secondBefore = this.quota.check(job.userIdHash, SAFE_SCAN_COST);
     const result = await this.runApprovedScan(job.id);
-    const second = this.quota.check(job.userIdHash);
+    const second = this.quota.check(job.userIdHash, SAFE_SCAN_COST);
     if (!second.allowed || secondBefore.allowed) {
       const payment = await this.engine.trust.createPayment(job);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CHECK_QUOTA_OR_PAYMENT', 'payment_gate', 'PakasirAdapter', payment.status, {}, { orderId: job.orderId });

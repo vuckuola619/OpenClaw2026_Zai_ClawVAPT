@@ -10,6 +10,7 @@ export type AppErrorCode =
   | 'ACTIVE_SCAN_APPROVAL_REQUIRED'
   | 'NETWORK_SCAN_APPROVAL_REQUIRED'
   | 'PAYMENT_REQUIRED'
+  | 'SCAN_LIMIT_REACHED'
   | 'JOB_NOT_FOUND'
   | 'REPORT_NOT_READY'
   | 'REPO_CONNECT_FAILED'
@@ -27,7 +28,8 @@ export class AppError extends Error {
 export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) return error;
   const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith('PAYMENT_REQUIRED:')) return new AppError('PAYMENT_REQUIRED', message, `Payment required. Order: ${message.split(':')[1] || '-'}`);
+  if (message.startsWith('PAYMENT_REQUIRED:')) return new AppError('PAYMENT_REQUIRED', message, `Payment required. Top up credits with /pay, then retry. Order: ${message.split(':')[1] || '-'}`);
+  if (message === 'SCAN_LIMIT_REACHED') return new AppError('SCAN_LIMIT_REACHED', message, 'Scan limit reached for this verified URL. Limit is 5 scan runs per verified scope. Create a new authorized scope cycle or contact support.');
   if (message === 'JOB_NOT_FOUND') return new AppError('JOB_NOT_FOUND', message, 'Job not found. Use /my_jobs or create a new scan.');
   if (message === 'OWNERSHIP_OR_SCOPE_GATE_BLOCKED') return new AppError('OWNERSHIP_OR_SCOPE_GATE_BLOCKED', message, 'Scan blocked: ownership verification and scope lock required.');
   if (message === 'OWNERSHIP_NOT_VERIFIED') return new AppError('OWNERSHIP_NOT_VERIFIED', message, 'Ownership not verified.');

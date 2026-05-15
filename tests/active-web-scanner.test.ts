@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MainOrchestrator } from '../src/orchestrator/MainOrchestrator.js';
+import { PersistentStore } from '../src/core/PersistentStore.js';
 import { ActiveWebScanner } from '../src/tools/ActiveWebScanner.js';
 
 test('active web scanner requires explicit approval', async () => {
@@ -27,7 +31,8 @@ test('strict nmap requires explicit network approval', async () => {
 });
 
 test('orchestrator active web preview requires verified scope', async () => {
-  const orchestrator = new MainOrchestrator();
+  const db = join(mkdtempSync(join(tmpdir(), 'clawvapt-active-')), 'state.db');
+  const orchestrator = new MainOrchestrator(new PersistentStore(db));
   const job = await orchestrator.createScan('active-web-user', 'https://demo-owned-site.local');
   await assert.rejects(() => orchestrator.previewActiveWebScan(job.id), /OWNERSHIP_OR_SCOPE_GATE_BLOCKED/);
   await orchestrator.verifyDemo(job.id);

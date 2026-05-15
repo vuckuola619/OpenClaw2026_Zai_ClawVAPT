@@ -31,6 +31,28 @@ npm run demo
 - `logs/demo_audit.jsonl`
 - `docs/demo-transcript.md`
 
+## Credits and Scan Limits
+
+- New users start with 10 credits.
+- Safe scans cost 5 credits (`/web_scan`, `/repo_scan`, strict Nmap).
+- Deep scans cost 10 credits (`/web_scan_deep`, `/repo_scan_deep`).
+- `/pay` creates a Pakasir top-up order; confirmed payment adds +10 credits.
+- URL ownership verification is reused per user + host. Verify once, then future jobs for the same host skip the challenge.
+- Each verified URL is limited to 5 scan runs across web/repo scans.
+
+## Code / GitHub Scan Flow
+
+```txt
+/scan https://your-site.com
+/verify JOB-xxxx
+/connect_repo JOB-xxxx https://github.com/owner/repo
+/repo_scan JOB-xxxx
+/repo_scan_deep JOB-xxxx
+/report JOB-xxxx
+```
+
+Only GitHub repos are accepted in the current connector. Scanners run against the cloned target repo, not the ClawVAPT backend.
+
 ## Telegram Commands
 
 Inline buttons are available for real target onboarding, GitHub repo connection, repo/web scans, strict Nmap approval, reports/export, manual review, payment, and sandbox demo.
