@@ -12,6 +12,10 @@ It verifies web target ownership, locks scan scope, checks credits, runs safe we
 
 Watch the demo: https://youtu.be/mupug2vA5Ys
 
+## Pitch Deck
+
+Jury deck: [`submission/OpenClaw2026_Zai_ClawVAPT_Jury_Deck.pdf`](submission/OpenClaw2026_Zai_ClawVAPT_Jury_Deck.pdf)
+
 ## Why ClawVAPT Stands Out
 
 ### Clear Real-World Use Case
