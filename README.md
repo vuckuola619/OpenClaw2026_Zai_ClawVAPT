@@ -1,51 +1,34 @@
 # OpenClaw2026_ZaiZai_ClawVAPT
 
-**ClawVAPT** is a Telegram-first, multi-agent VAPT assistant for security operators. It verifies website ownership, locks scope, runs safe/deep web checks or standalone public GitHub repo scans, handles credit-based QRIS payments, then sends PDF/JSON/manual-review reports directly in Telegram.
+**ClawVAPT** is a Telegram-first, multi-agent VAPT assistant for security operators. It verifies website ownership, locks scan scope, runs safe web checks or standalone public GitHub repo scans, handles QRIS credit top-ups, and sends PDF/JSON/manual-review reports back through Telegram.
 
-> Submission target: **OpenClaw Hackathon 2026**  
-> Recommended public repository name: `OpenClaw2026_ZaiZai_ClawVAPT`  
-> Current live bot: Telegram `@capithon_bot`  
-> Best Payment Use Case: **eligible** via Pakasir QRIS credit top-up flow
+Built for operators who need fast security triage without losing control of authorization, scope, credits, evidence, and reporting.
 
 ---
 
-## 1. Project Description
+## What It Does
 
-Security teams and small product builders often need quick vulnerability triage, but normal scanners are hard to operate safely: they can hit unauthorized targets, leak sensitive evidence, overwhelm users with raw logs, or require manual payment/access handling before each engagement.
+ClawVAPT turns a Telegram chat into a guided VAPT workflow:
 
-ClawVAPT solves this with a **consent-gated autonomous agent workflow**:
+1. Create a web target or submit a public GitHub repo.
+2. Verify ownership for web targets with HTTP/DNS proof.
+3. Lock scope before any web scanner runs.
+4. Check credits and scan limits.
+5. Run safe/deep scanner profiles through guarded tool adapters.
+6. Normalize, redact, and summarize findings.
+7. Send reports directly to Telegram.
 
-1. User starts a web target or public GitHub repo scan in Telegram.
-2. For web targets, the Trust agent requires HTTP/DNS ownership proof and locks the scope.
-3. The orchestrator checks credits and scan limits before any scanner runs.
-4. Specialist scanner agents run safe/deep checks through guarded tool adapters.
-5. Findings are normalized, redacted, ranked, and exported as PDF/JSON/manual-review reports.
-6. If credits are insufficient, the payment agent creates a Pakasir QRIS top-up flow and resumes after payment verification.
-
-This makes VAPT more accessible while keeping explicit authorization, payment, auditability, and redaction as first-class workflow gates.
-
----
-
-## 2. Why This Can Win
-
-| Judging Criterion | ClawVAPT Strength |
-|---|---|
-| Use Case Clarity & Impact (10%) | Real security ops pain: safe, authorized VAPT from Telegram with reports operators can send to clients. |
-| Creativity & Originality (30%) | Combines Telegram UX, ownership proof, credit/payment gating, security scanners, and AI advisory review in one autonomous agent loop. |
-| Autonomy & Agent Behaviour (30%) | Multi-agent engine makes decisions across scope verification, quota/payment, scanning, redaction, reporting, and edge-case handling. |
-| Technical Execution (20%) | TypeScript backend, SQLite persistence, audit JSONL, safe scanner wrappers, OpenClaw bridge, PDF/JSON generation, CI/test/build gates. |
-| Real-World Deployability (10%) | PM2 live deployment, reproducible install, `.env.example`, Telegram commands, payment flow, persistent jobs/credits/reports. |
-| Best Payment Use Case | Pakasir QRIS top-up integrated into the agent workflow; confirmed payment adds credits idempotently. |
+The goal is simple: make security checks easier to run, safer to authorize, and cleaner to report.
 
 ---
 
-## 3. AI Agent Workflow / Architecture
+## Multi-Agent Architecture
 
-Yes — ClawVAPT is currently implemented as a **code-level multi-agent architecture**.
+ClawVAPT uses a code-level multi-agent engine coordinated by `MainOrchestrator`.
 
 ```txt
 Telegram User
-  -> TelegramBot adapter
+  -> TelegramBot
   -> MainOrchestrator
       -> TrustVerifierPaymentAgent
       -> RedTeamRepoScannerAgent
@@ -59,39 +42,39 @@ Telegram User
       -> GitHubRepoConnector
       -> ReportGenerator
       -> AuditLogger
-  -> Telegram reports: PDF + JSON + manual review
+  -> Telegram reports
 ```
 
-### Agent Responsibilities
+### Agents
 
-- **MainOrchestrator** — owns state machine, dispatches agents/tools, enforces safety gates, records scan runs, refreshes reports.
-- **TrustVerifierPaymentAgent** — creates ownership challenge, validates proof, locks scope, creates Pakasir payment orders, handles quota gate.
-- **RedTeamRepoScannerAgent** — runs safe scanner profiles and normalizes security findings.
-- **BlueTeamHardeningReportAgent** — generates remediation/report artifacts and retest-oriented output.
-- **OpenClawBridge (optional)** — sends sanitized advisory envelopes to local OpenClaw Gateway for extra AI review without exposing secrets.
+- **MainOrchestrator** — owns state, dispatches agents/tools, enforces gates, persists jobs, refreshes reports.
+- **TrustVerifierPaymentAgent** — handles ownership proof, scope lock, quota checks, and Pakasir payment orders.
+- **RedTeamRepoScannerAgent** — runs scanner profiles and normalizes findings.
+- **BlueTeamHardeningReportAgent** — generates report artifacts and remediation-oriented output.
+- **OpenClawBridge** — optional sanitized advisory bridge to local OpenClaw Gateway.
 
 ### Autonomous Loop
 
 ```txt
-Receive request
+request
   -> validate input
-  -> enforce ownership/scope or public GitHub policy
-  -> check credits and scan limit
-  -> request payment if needed
-  -> run selected tools
-  -> redact/normalize findings
+  -> verify ownership or public repo policy
+  -> check credits + scan limits
+  -> run tools
+  -> normalize findings
+  -> redact evidence
   -> generate reports
-  -> send artifacts to user
-  -> persist job/audit/credit state
+  -> deliver artifacts
+  -> persist audit trail
 ```
 
-Every meaningful transition is written to JSONL audit logs. Failures return safe user-facing errors rather than raw stack traces.
+Every important transition is written to JSONL audit logs. User-facing errors are sanitized.
 
 ---
 
-## 4. Key Features
+## Core Features
 
-### Web VAPT Flow
+### Web VAPT
 
 ```txt
 /scan https://example.com
@@ -101,89 +84,72 @@ Every meaningful transition is written to JSONL audit logs. Failures return safe
 /nmap_scan JOB-xxxx
 ```
 
-- HTTP/DNS ownership proof before web scanning.
-- Scope lock per verified host.
-- Max **5 scan runs per verified URL cycle**; bot asks user to renew verification after limit.
-- Active web safe scan: headers + low-noise templates.
-- Active web deep scan: non-destructive CVE/KEV/injection checks + controlled Nikto profile.
-- Strict Nmap: low-rate single-host port discovery only.
-- After active web scan, bot automatically sends:
-  - PDF report
-  - JSON report
-  - manual-review report
+- HTTP/DNS ownership verification.
+- Per-host scope lock.
+- 5 scan runs per verification cycle.
+- Safe active web profile for low-noise checks.
+- Deep active web profile for non-destructive CVE/KEV/injection checks.
+- Strict Nmap profile for low-rate single-host port discovery.
+- Automatic PDF, JSON, and manual-review report delivery after active web scans.
 
-### Standalone Public GitHub Scan
+### Public GitHub Repo Scan
 
 ```txt
 /repo_scan https://github.com/owner/repo
 /repo_scan_deep https://github.com/owner/repo
 ```
 
-- Not linked to web target jobs.
-- Public GitHub repos only.
-- Cost: **25 credits**.
-- Limit: **1 scan per repo per account** for now.
-- Shows estimated scan time before running.
+- Standalone flow, not tied to a web target job.
+- Public GitHub repositories only.
+- 25 credits per repo scan.
+- 1 scan per repo per account.
+- Shows scan estimate before running.
 - Shows credit debit and remaining credits after completion.
 
-### Payment / Credits
+### Payments & Credits
 
-- New users start with credits for web scanning.
-- Web safe / strict Nmap: **5 credits**.
-- Web deep: **10 credits**.
-- Public GitHub repo scan: **25 credits**.
-- `/pay` creates Pakasir QRIS payment.
-- `/check_payment <order_id>` verifies status and idempotently credits account.
-- If credit is insufficient, bot blocks scan and asks user to top up.
+- Web safe / strict Nmap: 5 credits.
+- Web deep: 10 credits.
+- Public GitHub repo scan: 25 credits.
+- `/pay` creates a Pakasir QRIS top-up order.
+- `/check_payment <order_id>` verifies payment and credits the account once.
+- If credits are insufficient, the bot blocks the scan and prompts top-up.
 
-### Reporting
+### Reports
 
 - Enterprise-style PDF report.
 - Structured JSON report.
-- Manual-review checklist for IDOR, authZ, workflow bypass, payment/business logic, tenant isolation, and AI/tool misuse.
-- Redaction rules prevent raw secrets from leaking into logs/reports/Telegram.
+- Manual-review checklist for logic flaws scanners often miss.
+- Redaction rules keep raw secrets out of logs, reports, and Telegram messages.
 
 ---
 
-## 5. Tech Stack
+## Tech Stack
 
-- **Runtime:** Node.js 22, TypeScript ESM
-- **Bot Interface:** Telegram Bot API long polling
-- **Persistence:** SQLite via `better-sqlite3`
-- **Process:** PM2 live deployment
-- **Security tools:** built-in checks plus optional safe adapters for Gitleaks, Semgrep, Trivy, Nuclei, Nikto, Nmap, OSV-Scanner, Checkov, Syft, Grype, Lynis, testssl.sh, OWASP ZAP
-- **Reports:** JSON + generated PDF
-- **Payments:** Pakasir QRIS
-- **AI/Agent:** local TypeScript multi-agent engine + optional OpenClaw Gateway bridge / OpenClaw Codex GPT-5.5 advisory review
+- Node.js 22
+- TypeScript ESM
+- Telegram Bot API
+- SQLite (`better-sqlite3`)
+- PM2
+- Pakasir QRIS
+- OpenClaw optional bridge
+- Built-in scanner logic plus optional adapters for Gitleaks, Semgrep, Trivy, Nuclei, Nikto, Nmap, OSV-Scanner, Checkov, Syft, Grype, Lynis, testssl.sh, and OWASP ZAP
 
 ---
 
-## 6. AI Tools / Models Used
+## AI / Agent Tools
 
-| Tool / Model | Role |
+| Tool | Use |
 |---|---|
-| OpenClaw | Operator/runtime environment, orchestration support, bridge target for advisory AI review. |
-| OpenClaw Codex GPT-5.5 advisory review | Optional sanitized public-repo security review via OpenClaw bridge. |
-| TypeScript MultiAgentEngine | Deterministic product agent engine that dispatches Trust, Red Team, and Blue Team agents. |
-| Security scanner adapters | Tool-using agent capabilities for repo/web security checks. |
-| Pakasir QRIS | Payment use case enabling credit-based scan access. |
-
-OpenClaw bridge mode is disabled by default in `.env.example` and uses loopback-only gateway settings when enabled.
+| TypeScript MultiAgentEngine | Product agent loop and routing. |
+| OpenClaw | Runtime/operator environment and optional advisory bridge. |
+| OpenClaw Codex GPT-5.5 advisory review | Optional sanitized public-repo security review. |
+| Security tool adapters | Tool calls for web/repo security checks. |
+| Pakasir QRIS | Payment and credit top-up workflow. |
 
 ---
 
-## 7. Reproducible Installation / Run Instructions
-
-### Prerequisites
-
-- Node.js 22+
-- npm
-- Git
-- Optional: Telegram bot token for live bot mode
-- Optional: Pakasir credentials for real payment verification
-- Optional: external scanner binaries for deeper coverage
-
-### Local Demo
+## Quick Start
 
 ```bash
 git clone https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT.git
@@ -204,26 +170,27 @@ npm run demo
 - `logs/demo_audit.jsonl`
 - `docs/demo-transcript.md`
 
-### Start Bot Locally
+---
+
+## Run Telegram Bot
 
 ```bash
 cp .env.example .env
-# edit TELEGRAM_BOT_TOKEN and payment fields if needed
+# edit TELEGRAM_BOT_TOKEN and payment settings
 npm install
 npm run build
 npm start
 ```
 
-### PM2 Deployment
+PM2:
 
 ```bash
-npm install
 npm run build
 pm2 start "node dist/src/index.js" --name clawthon
 pm2 logs clawthon
 ```
 
-### Docker Deployment
+Docker:
 
 ```bash
 docker compose config
@@ -234,7 +201,7 @@ docker compose logs --tail=200
 
 ---
 
-## 8. Telegram Commands
+## Telegram Commands
 
 ```txt
 /start
@@ -262,83 +229,46 @@ docker compose logs --tail=200
 
 ---
 
-## 9. Safety Contract
+## Safety Model
 
-- No ownership verification = no web scan.
-- No scope lock = no web scanner execution.
-- No explicit approval = no active web scan or Nmap.
-- No credit = no paid scan.
-- No evidence = no finding.
-- No redaction = report cannot be released.
-- No raw secrets in logs, commits, reports, Telegram, PR body, GitHub Actions, or README.
-- No brute force, credential stuffing, destructive payloads, data exfiltration, or scanning outside verified scope.
-- GitHub scan accepts public GitHub repos only and strips GitHub tokens from clone environment.
+- No verified ownership, no web scan.
+- No scope lock, no web scanner.
+- No explicit approval, no active web scan or Nmap.
+- No credits, no paid scan.
+- No raw secrets in user-facing output.
+- Public GitHub repo scans strip GitHub tokens from the clone environment.
+- Destructive payloads, brute force, credential stuffing, and out-of-scope scanning are blocked.
 
 ---
 
-## 10. Real vs Mock Status
+## Status
 
-| Capability | Status | Notes |
-|---|---|---|
-| Telegram live bot | DONE | Long polling bot handlers. |
-| Multi-agent engine | DONE | Trust, Red Team, Blue Team agents. |
-| Ownership verification | DONE | HTTP/DNS proof + scope lock. |
-| Web safe/deep scan | DONE | Safe approval-gated scanner profiles. |
-| Strict Nmap | DONE | Single host, low-rate, limited ports. |
-| Public GitHub scan | DONE | Standalone repo scan, 25 credits, 1 scan/repo/account. |
-| Payments | DONE | Pakasir QRIS flow + idempotent crediting. |
-| Persistence | DONE | SQLite jobs, quotas, orders, reports, scan runs. |
-| Reports | DONE | PDF + JSON + manual review. |
-| OpenClaw bridge | DONE/OPTIONAL | Sanitized advisory envelope to local OpenClaw Gateway. |
-| External scanners | DONE/PARTIAL | Used when installed; missing tools marked incomplete/future safely. |
-| Private GitHub repos | ROADMAP | GitHub App/SSO support later. |
-| Multi-tenant SaaS dashboard | ROADMAP | Telegram-first MVP for hackathon. |
-
----
-
-## 11. Submission Assets
-
-> Replace placeholders before Devpost submission. All links/files must remain accessible to judges without extra permission.
-
-| Required Asset | Status / Link |
+| Capability | Status |
 |---|---|
-| GitHub Repository | `https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT` — Public |
-| Demo Video | `OpenClaw2026_ZaiZai_ClawVAPT` on YouTube Unlisted — max 2 minutes |
-| Pitch Deck | `OpenClaw2026_ZaiZai_ClawVAPT.pdf` — max 5 slides |
-| Live Deployment Link | Telegram bot `@capithon_bot` |
-| AI Tools / Models Used | See section 6 |
-| Payment Track | Select `Best Payment Use Case` on Devpost |
-
-### Demo Video Checklist (max 2 minutes)
-
-1. Show Telegram `/start` and credit summary.
-2. Show web target `/scan` + ownership/scope gate.
-3. Show active web scan approval, estimate, credit debit, and report delivery.
-4. Show standalone `/repo_scan https://github.com/owner/repo` with 25-credit cost and estimate.
-5. Show insufficient credit -> `/pay` QRIS top-up -> `/check_payment`.
-6. Show PDF/JSON/manual review artifacts.
-7. Mention multi-agent workflow: Trust -> Red Team -> Blue Team -> Reports.
-
-### Pitch Deck Outline (5 slides max)
-
-1. **Problem Statement** — safe VAPT is hard, authorization/payment/reporting are fragmented.
-2. **Solution Overview** — Telegram-first ClawVAPT agent with verified scope, scanners, reports, payments.
-3. **AI Agent Workflow / Architecture** — multi-agent loop + tool calls + OpenClaw bridge.
-4. **Key Features & Tech Stack** — web scan, GitHub scan, QRIS credits, SQLite, reports, scanners.
-5. **Future Development / Impact** — private repo GitHub App, SaaS dashboard, richer RAG knowledge base, enterprise integrations.
+| Telegram bot | Done |
+| Multi-agent engine | Done |
+| Ownership verification | Done |
+| Web safe/deep scan | Done |
+| Strict Nmap | Done |
+| Public GitHub scan | Done |
+| Pakasir QRIS credits | Done |
+| SQLite persistence | Done |
+| PDF/JSON/manual review reports | Done |
+| OpenClaw bridge | Optional |
+| Private GitHub repos | Roadmap |
 
 ---
 
-## 12. Future Development / Impact
+## Roadmap
 
-- GitHub App integration for private repositories.
-- Organization/team dashboard for agencies and pentest operators.
+- GitHub App support for private repositories.
+- Team dashboard for agencies and pentest operators.
 - RAG-backed remediation knowledge base mapped to OWASP/CWE/CIS.
-- Client-ready engagement packets with scope, proof, report, and retest evidence.
-- Safer continuous security monitoring for SMEs through chat-first workflows.
+- Retest evidence packs for client-ready delivery.
+- Continuous security monitoring from chat.
 
 ---
 
-## 13. License
+## License
 
 MIT
