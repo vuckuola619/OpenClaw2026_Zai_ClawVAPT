@@ -212,6 +212,13 @@ export class MainOrchestrator {
 
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
+  repoScanForUser(userId: string, repoUrl: string): { job: Job; reports?: { json: string; pdf: string } } | undefined {
+    const normalized = parseGitHubRepo(repoUrl).htmlUrl.toLowerCase();
+    const userHash = this.hashUser(userId);
+    const job = [...this.jobs.values()].find((candidate) => candidate.userIdHash === userHash && candidate.repoUrl?.toLowerCase() === normalized && (this.scanRunsByJob.get(candidate.id) || []).some((run) => run.type === 'repo'));
+    return job ? { job, reports: this.reportsByJob.get(job.id) } : undefined;
+  }
+
   private repoAlreadyScanned(userHash: string, repoUrl: string): boolean {
     const normalized = repoUrl.toLowerCase();
     return [...this.jobs.values()].some((job) => job.userIdHash === userHash && job.repoUrl?.toLowerCase() === normalized && (this.scanRunsByJob.get(job.id) || []).some((run) => run.type === 'repo'));

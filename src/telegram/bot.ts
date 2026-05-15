@@ -294,6 +294,16 @@ export class TelegramBot {
 
   private async repoScan(chatId: string | number, userId: string, profile: 'safe' | 'deep' = 'safe', repoUrl?: string): Promise<void> {
     if (!repoUrl) return this.sendMessage(chatId, `Usage: /repo_scan${profile === 'deep' ? '_deep' : ''} https://github.com/owner/repo`, mainButtons());
+    const existing = this.orchestrator.repoScanForUser(userId, repoUrl);
+    if (existing) {
+      await this.sendMessage(chatId, `Repo already scanned for this account. Limit is 1 scan per repo.\n\nJob: ${existing.job.id}\nRepo: ${existing.job.repoUrl}\nFindings: ${existing.job.findings.length}\n\nSending existing report now.`, reportButtons(existing.job.id));
+      const reports = existing.reports || await this.orchestrator.refreshReport(existing.job.id, []);
+      const manual = await this.orchestrator.manualReview(existing.job.id);
+      await this.sendDocument(chatId, reports.pdf, 'Existing repo PDF report');
+      await this.sendDocument(chatId, reports.json, 'Existing repo JSON report');
+      await this.sendDocument(chatId, manual.markdown, 'Existing repo manual review');
+      return;
+    }
     if (!(await this.ensureCredits(chatId, userId, REPO_SCAN_COST, 'public GitHub repo scan'))) return;
     const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const estimate = profile === 'deep' ? '8-20 minutes depending on repo size and dependency checks.' : '3-10 minutes depending on repo size and tool availability.';
