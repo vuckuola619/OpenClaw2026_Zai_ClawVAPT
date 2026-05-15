@@ -9,9 +9,10 @@ The demo buttons are sandbox-only. Real usage is command-driven so the operator 
 /verify JOB-xxxx
 /web_scan JOB-xxxx
 /web_scan_deep JOB-xxxx
+/nmap_scan JOB-xxxx
 ```
 
-`/scan` creates a real job for the given public http(s) URL. Scanner execution remains blocked until ownership verification and scope lock.
+`/scan` creates a real job for the given public http(s) URL. Scanner execution remains blocked until ownership verification and scope lock. `/nmap_scan` uses the separate strict network-scan approval gate and only runs a low-rate TCP connect scan against the locked host.
 
 ## Attach GitHub repo
 

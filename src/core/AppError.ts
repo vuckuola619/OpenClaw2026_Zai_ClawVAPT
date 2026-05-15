@@ -8,6 +8,7 @@ export type AppErrorCode =
   | 'SCOPE_NOT_LOCKED'
   | 'OUT_OF_SCOPE'
   | 'ACTIVE_SCAN_APPROVAL_REQUIRED'
+  | 'NETWORK_SCAN_APPROVAL_REQUIRED'
   | 'PAYMENT_REQUIRED'
   | 'JOB_NOT_FOUND'
   | 'REPORT_NOT_READY'
@@ -32,6 +33,7 @@ export function toAppError(error: unknown): AppError {
   if (message === 'SCOPE_NOT_LOCKED') return new AppError('SCOPE_NOT_LOCKED', message, 'Scope not locked.');
   if (message === 'OUT_OF_SCOPE') return new AppError('OUT_OF_SCOPE', message, 'Target is outside locked scope.');
   if (message === 'ACTIVE_SCAN_APPROVAL_REQUIRED') return new AppError('ACTIVE_SCAN_APPROVAL_REQUIRED', message, 'Active web scan needs explicit approval.');
+  if (message === 'NETWORK_SCAN_APPROVAL_REQUIRED') return new AppError('NETWORK_SCAN_APPROVAL_REQUIRED', message, 'Strict network scan needs explicit network-scan approval.');
   if (message === 'Invalid URL') return new AppError('INVALID_URL', message, 'Invalid URL. Use https://example.com.');
   if (message === 'UNSUPPORTED_PROTOCOL') return new AppError('UNSUPPORTED_PROTOCOL', message, 'Only http:// and https:// URLs are allowed.');
   if (message.startsWith('BLOCKED_TARGET')) return new AppError('BLOCKED_TARGET', message, 'Target blocked by safety policy. Public http(s) targets only.');
