@@ -283,10 +283,10 @@ export class MainOrchestrator {
 
   reportForJob(jobId: string): { json: string; pdf: string } | undefined { return this.reportsByJob.get(jobId); }
 
-  async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string; manualReview: { markdown: string } }> {
+  async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; manualReview: { markdown: string } }> {
     const reports = await this.refreshReport(jobId, []);
     const manualReview = await this.manualReview(jobId);
-    return { reports, audit: process.env.DEMO_AUDIT_LOG_PATH || 'logs/demo_audit.jsonl', manualReview };
+    return { reports, manualReview };
   }
 
   async manualReview(jobId: string): Promise<{ markdown: string }> {

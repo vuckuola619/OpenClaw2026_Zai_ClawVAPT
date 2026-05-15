@@ -29,7 +29,7 @@ export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) return error;
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith('PAYMENT_REQUIRED:')) return new AppError('PAYMENT_REQUIRED', message, `Payment required. Top up credits with /pay, then retry. Order: ${message.split(':')[1] || '-'}`);
-  if (message === 'SCAN_LIMIT_REACHED') return new AppError('SCAN_LIMIT_REACHED', message, '⚠️ Scan limit reached: this verified URL already used 5/5 scan runs for the current verification cycle. To continue safely, renew ownership verification with /renew_scope <job_id>, add the new HTTP/DNS proof, then run /verify <new_job_id>.');
+  if (message === 'SCAN_LIMIT_REACHED') return new AppError('SCAN_LIMIT_REACHED', message, '⚠️ Scan limit reached (5/5). Renew verification to keep scanning:\n/renew_scope <job_id>');
   if (message === 'JOB_NOT_FOUND') return new AppError('JOB_NOT_FOUND', message, 'Job not found. Use /my_jobs or create a new scan.');
   if (message === 'OWNERSHIP_OR_SCOPE_GATE_BLOCKED') return new AppError('OWNERSHIP_OR_SCOPE_GATE_BLOCKED', message, 'Scan blocked: ownership verification and scope lock required.');
   if (message === 'OWNERSHIP_NOT_VERIFIED') return new AppError('OWNERSHIP_NOT_VERIFIED', message, 'Ownership not verified.');

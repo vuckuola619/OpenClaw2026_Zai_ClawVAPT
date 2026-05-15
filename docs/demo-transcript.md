@@ -3,14 +3,14 @@
 /start
 /help
 /demo
-/scan https://demo-owned-site.local
-/verify JOB-d0b5c1e4
-/status JOB-d0b5c1e4
-/report JOB-d0b5c1e4
-/harden JOB-d0b5c1e4
+/scan https://demo-owned-site.local/
+/verify JOB-563370a9
+/status JOB-563370a9
+/report JOB-563370a9
+/harden JOB-563370a9
 /pay
-/check_payment CLWV-20260515-c1e4
-/simulate_payment CLWV-20260515-c1e4
+/check_payment CLWV-20260515-70a9
+/simulate_payment CLWV-20260515-70a9
 
 Reports: reports/sample_report.json, reports/sample_report.pdf
 Safety: ownership verified, scope locked, secrets redacted.

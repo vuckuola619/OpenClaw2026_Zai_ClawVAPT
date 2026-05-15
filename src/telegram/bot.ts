@@ -3,7 +3,6 @@ import { basename } from 'node:path';
 import { MainOrchestrator } from '../orchestrator/MainOrchestrator.js';
 import { RateLimiter } from '../core/RateLimiter.js';
 import { formatSafeError } from '../core/AppError.js';
-import { healthCheck } from '../core/HealthCheck.js';
 import { helpText } from './commands.js';
 import { severitySummary } from '../report/ReportGenerator.js';
 
@@ -47,7 +46,7 @@ export class TelegramBot {
       if (cmd === '/manual_review') return this.manualReview(chatId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
-      if (cmd === '/health') return this.health(chatId);
+      if (cmd === '/health' || cmd === '/summary') return this.jobSummary(chatId, userId);
       if (cmd === '/tools') return this.toolsStatus(chatId, userId);
       if (cmd === '/connect_repo') return this.connectRepo(chatId, userId, args[0], args[1]);
       if (cmd === '/repo_scan') return this.repoScan(chatId, userId, 'safe', args[0]);
@@ -77,7 +76,7 @@ export class TelegramBot {
       if (data === 'demo') return this.runDemo(chatId);
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
-      if (data === 'health') return this.health(chatId);
+      if (data === 'health' || data === 'summary') return this.jobSummary(chatId, userId);
       if (data === 'tools') return this.toolsStatus(chatId, userId);
       if (data.startsWith('repo_scan:')) return this.repoScan(chatId, userId, 'safe', data.slice('repo_scan:'.length));
       if (data.startsWith('repo_scan_deep:')) return this.repoScan(chatId, userId, 'deep', data.slice('repo_scan_deep:'.length));
@@ -167,6 +166,7 @@ export class TelegramBot {
 
   private async runScan(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
+    if (!(await this.checkScanLimit(chatId, jobId))) return;
     await this.sendMessage(chatId, `Running safe scan for ${jobId}...`);
     try {
       const result = await this.orchestrator.runApprovedScan(jobId);
@@ -229,7 +229,6 @@ export class TelegramBot {
     const bundle = await this.orchestrator.exportBundle(jobId);
     await this.sendDocument(chatId, bundle.reports.pdf, 'Export: PDF report');
     await this.sendDocument(chatId, bundle.reports.json, 'Export: JSON report');
-    await this.sendDocument(chatId, bundle.audit, 'Export: redacted audit JSONL');
     await this.sendDocument(chatId, bundle.manualReview.markdown, 'Export: manual review checklist');
   }
 
@@ -254,10 +253,29 @@ export class TelegramBot {
     await this.sendPhoto(chatId, paymentQrUrl(tx.paymentUrl), 'Payment QR code. If this opens a Pakasir page instead of direct QRIS, tap Complete Payment QRIS to view/pay the official QRIS.');
   }
 
-  private async health(chatId: string | number): Promise<void> {
-    const health = healthCheck();
-    const checks = Object.entries(health.checks).map(([k, v]) => `• ${k}: ${v}`).join('\n');
-    await this.sendMessage(chatId, `Health: ${health.status}\n${checks}`, mainButtons());
+  private async jobSummary(chatId: string | number, userId: string): Promise<void> {
+    const jobs = this.orchestrator.listJobsForUser(userId, 20);
+    if (jobs.length === 0) return this.sendMessage(chatId, 'No jobs yet. Create one with /scan <url>.', mainButtons());
+    const totals = { findings: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0, reports: 0, scans: 0 };
+    for (const job of jobs) {
+      const sev = severitySummary(job.findings);
+      totals.findings += job.findings.length;
+      totals.critical += sev.CRITICAL;
+      totals.high += sev.HIGH;
+      totals.medium += sev.MEDIUM;
+      totals.low += sev.LOW;
+      totals.info += sev.INFO;
+      totals.reports += this.orchestrator.reportForJob(job.id) ? 1 : 0;
+      totals.scans += this.orchestrator.scanRuns(job.id).length;
+    }
+    const recent = jobs.slice(0, 5).map((job) => {
+      const sev = severitySummary(job.findings);
+      const runs = this.orchestrator.scanRuns(job.id);
+      const lastRun = runs[0];
+      const report = this.orchestrator.reportForJob(job.id);
+      return `• ${job.id} — ${job.state}\n  target: ${job.scopeHost || new URL(job.targetUrl).hostname}\n  scans: ${runs.length} — report: ${report ? 'ready ✅' : 'not ready'}\n  last scan: ${lastRun ? `${lastRun.profile} ${lastRun.createdAt}` : '-'}\n  findings C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`;
+    }).join('\n');
+    await this.sendMessage(chatId, `📊 Job Summary\nJobs: ${jobs.length}\nScans run: ${totals.scans}\nReports ready: ${totals.reports}\nTotal findings: ${totals.findings}\nSeverity C/H/M/L/I: ${totals.critical}/${totals.high}/${totals.medium}/${totals.low}/${totals.info}\n\nRecent jobs:\n${recent}`, mainButtons());
   }
 
   private async toolsStatus(chatId: string | number, userId: string): Promise<void> {
@@ -275,6 +293,7 @@ export class TelegramBot {
 
   private async repoScan(chatId: string | number, userId: string, profile: 'safe' | 'deep' = 'safe', jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, `Usage: /repo_scan${profile === 'deep' ? '_deep' : ''} <job_id>`, mainButtons());
+    if (!(await this.checkScanLimit(chatId, jobId))) return;
     await this.sendMessage(chatId, `Running ${profile} repo security suite for ${jobId}...`);
     const result = await this.orchestrator.runRepoSecuritySuite(userId, profile, jobId);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
@@ -283,8 +302,21 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Repo security suite complete\nJob: ${jobId}\nProfile: ${result.profile.toUpperCase()}\nCost: 10 credits\nCredits left: ${q.credits}\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, repoButtons(jobId));
   }
 
+  private async checkScanLimit(chatId: string | number, jobId: string): Promise<boolean> {
+    const usage = this.orchestrator.scopeScanUsage(jobId);
+    if (usage.used >= usage.limit) {
+      await this.sendMessage(chatId, `⚠️ Scan limit reached (${usage.used}/${usage.limit})\n\nThis verified URL has used all ${usage.limit} scan runs for the current verification cycle.\n\nTo continue scanning, renew verification:\n/renew_scope ${jobId}\n\nThis creates a new job with fresh proof requirements. After adding proof, run /verify <new_job_id>.`, { inline_keyboard: [[{ text: '🔄 Renew Verification', callback_data: `renew:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
+      return false;
+    }
+    if (usage.used >= usage.limit - 1) {
+      await this.sendMessage(chatId, `⚡ Heads up: ${usage.used}/${usage.limit} scans used for this URL. One scan remaining. After that, you'll need to /renew_scope to keep scanning.`);
+    }
+    return true;
+  }
+
   private async webScanPreview(chatId: string | number, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, profile === 'deep' ? 'Usage: /web_scan_deep <job_id>' : 'Usage: /web_scan <job_id>', mainButtons());
+    if (!(await this.checkScanLimit(chatId, jobId))) return;
     const preview = await this.orchestrator.previewActiveWebScan(jobId, profile);
     const profileTools = preview.tools.filter((t) => profile === 'deep' ? ['NucleiDeepProfile','NiktoDeepProfile','Nmap'].includes(t.name) : ['NucleiSafeProfile','Nmap'].includes(t.name));
     const tools = profileTools.map((t) => `• ${t.name}: ${t.available ? 'available' : 'missing'} (${t.mode})`).join('\n');
@@ -295,6 +327,7 @@ export class TelegramBot {
 
   private async nmapScanPreview(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /nmap_scan <job_id>', mainButtons());
+    if (!(await this.checkScanLimit(chatId, jobId))) return;
     const preview = await this.orchestrator.previewActiveWebScan(jobId, 'deep');
     const nmap = preview.tools.find((t) => t.name === 'NmapStrictProfile');
     const tools = `• NmapStrictProfile: ${nmap?.available ? 'available' : 'missing'} (${nmap?.mode || 'tcp_connect_single_host_low_rate'})`;
@@ -312,6 +345,7 @@ export class TelegramBot {
 
   private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
+    if (!(await this.checkScanLimit(chatId, jobId))) return;
     const estimate = profile === 'deep' ? '5-15 minutes depending on target speed, WAF/rate limits, and installed scanners.' : '1-3 minutes for low-noise header + safe template checks.';
     await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...\nEstimated time: ${estimate}`);
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
@@ -363,12 +397,12 @@ export class TelegramBot {
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
       { command: 'report', description: 'Send latest report files' },
-      { command: 'export', description: 'Send report + audit bundle' },
+      { command: 'export', description: 'Send report bundle' },
       { command: 'manual_review', description: 'Send manual review checklist' },
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
-      { command: 'health', description: 'Show service health' },
+      { command: 'summary', description: 'Show previous job results summary' },
       { command: 'tools', description: 'Show security tools status' },
       { command: 'repo_scan', description: 'Run repo safe scan: /repo_scan JOB-id' },
       { command: 'repo_scan_deep', description: 'Run repo deep scan: /repo_scan_deep JOB-id' }
@@ -418,7 +452,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '🩺 Health', callback_data: 'health' }, { text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📊 Job Summary', callback_data: 'summary' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }, { text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Show Challenge', callback_data: `challenge:${jobId}` }, { text: 'Verify Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
