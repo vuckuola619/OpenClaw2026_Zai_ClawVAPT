@@ -13,3 +13,4 @@ export interface Finding { id: string; title: string; severity: Severity; status
 export interface AgentResult { agent: string; job_id: string; status: Status; decision: string; evidence: Evidence[]; findings: Finding[]; next_state: string; redaction_applied: true; notes: string[]; }
 export interface Job { id: string; userIdHash: string; targetUrl: string; verified: boolean; scopeLocked: boolean; scopeHost: string; state: string; freeScanUsed: boolean; credits: number; findings: Finding[]; orderId?: string; repoUrl?: string; repoPath?: string; repoCommit?: string; }
 export interface ToolStatus { name: string; status: Status; available: boolean; mode: string; notes: string[]; }
+export interface ScanRun { id: string; jobId: string; type: 'repo' | 'web'; profile: 'safe' | 'deep'; tools: ToolStatus[]; findings: Finding[]; approval: string; createdAt: string; }

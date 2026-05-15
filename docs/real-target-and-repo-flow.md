@@ -23,6 +23,18 @@ The demo buttons are sandbox-only. Real usage is command-driven so the operator 
 
 `/connect_repo` shallow-clones the GitHub repo into `data/repos/<job_id>` and stores repo URL/path/commit on the job. Repo scans then run against that cloned repo, not the ClawVAPT backend repo.
 
+## Reports and export
+
+```text
+/status JOB-xxxx
+/report JOB-xxxx
+/export JOB-xxxx
+```
+
+Scan results are persisted into SQLite `scan_runs` with scan type, profile, tools, findings, approval metadata, and timestamp. `/report` regenerates the latest combined JSON/PDF report. `/export` sends PDF, JSON, and redacted audit JSONL bundle.
+
+Reports include scope, web target, GitHub repo/commit, safe/deep profiles, tool matrix, severity summary, findings, and remediation priorities.
+
 ## Demo / sandbox
 
 - `Demo / Sandbox` remains available for deterministic QA only.

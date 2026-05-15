@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
-import type { Job } from '../types/index.js';
+import type { Job, ScanRun, ToolStatus } from '../types/index.js';
 
 type Row = Record<string, unknown>;
 type Statement = { run: (...args: unknown[]) => unknown; get: (...args: unknown[]) => Row | undefined; all: (...args: unknown[]) => Row[] };
@@ -64,6 +64,17 @@ export class PersistentStore {
         pdf_path TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS scan_runs (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        scan_type TEXT NOT NULL,
+        profile TEXT NOT NULL,
+        tools_json TEXT NOT NULL DEFAULT '[]',
+        findings_json TEXT NOT NULL DEFAULT '[]',
+        approval TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_scan_runs_job_id ON scan_runs(job_id);
     `);
   }
 
@@ -133,6 +144,18 @@ export class PersistentStore {
     return this.db.prepare('SELECT job_id,json_path,pdf_path FROM reports').all().map((r) => ({ jobId: str(r.job_id), json: str(r.json_path), pdf: str(r.pdf_path) }));
   }
 
+  saveScanRun(run: ScanRun): void {
+    this.db.prepare(`
+      INSERT INTO scan_runs (id,job_id,scan_type,profile,tools_json,findings_json,approval,created_at) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET tools_json=excluded.tools_json, findings_json=excluded.findings_json, approval=excluded.approval
+    `).run(run.id, run.jobId, run.type, run.profile, JSON.stringify(run.tools), JSON.stringify(run.findings), run.approval, run.createdAt);
+  }
+
+  loadScanRuns(jobId?: string): ScanRun[] {
+    const rows = jobId ? this.db.prepare('SELECT * FROM scan_runs WHERE job_id=? ORDER BY created_at DESC').all(jobId) : this.db.prepare('SELECT * FROM scan_runs ORDER BY created_at DESC').all();
+    return rows.map(rowToScanRun);
+  }
+
   private ensureRepoColumns(): void {
     for (const sql of ['ALTER TABLE jobs ADD COLUMN repo_url TEXT', 'ALTER TABLE jobs ADD COLUMN repo_path TEXT', 'ALTER TABLE jobs ADD COLUMN repo_commit TEXT']) {
       try { this.db.exec(sql); } catch { /* column already exists */ }
@@ -162,7 +185,11 @@ function rowToJob(row: Row): Job {
     repoCommit: row.repo_commit ? str(row.repo_commit) : undefined
   };
 }
+function rowToScanRun(row: Row): ScanRun {
+  return { id: str(row.id), jobId: str(row.job_id), type: str(row.scan_type) === 'web' ? 'web' : 'repo', profile: str(row.profile) === 'deep' ? 'deep' : 'safe', tools: parseTools(str(row.tools_json)), findings: parseFindings(str(row.findings_json)), approval: str(row.approval), createdAt: str(row.created_at) };
+}
 function parseFindings(raw: string): Job['findings'] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+function parseTools(raw: string): ToolStatus[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
 function str(value: unknown): string { return typeof value === 'string' ? value : value == null ? '' : String(value); }
 function num(value: unknown): number { return typeof value === 'number' ? value : Number(value || 0); }
 function bool(value: boolean): number { return value ? 1 : 0; }

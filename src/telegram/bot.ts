@@ -5,6 +5,7 @@ import { RateLimiter } from '../core/RateLimiter.js';
 import { formatSafeError } from '../core/AppError.js';
 import { healthCheck } from '../core/HealthCheck.js';
 import { helpText } from './commands.js';
+import { severitySummary } from '../report/ReportGenerator.js';
 
 type InlineButton = { text: string; callback_data?: string; url?: string };
 type TelegramMessage = { message_id: number; chat: { id: number | string }; from?: { id: number | string }; text?: string };
@@ -40,6 +41,7 @@ export class TelegramBot {
       if (cmd === '/my_jobs') return this.myJobs(chatId, userId);
       if (cmd === '/latest') return this.latest(chatId, userId);
       if (cmd === '/report') return this.report(chatId, args[0]);
+      if (cmd === '/export') return this.exportBundle(chatId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health') return this.health(chatId);
@@ -82,6 +84,7 @@ export class TelegramBot {
       if (data === 'latest') return this.latest(chatId, userId);
       if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
       if (data.startsWith('report:')) return this.report(chatId, data.slice('report:'.length));
+      if (data.startsWith('export:')) return this.exportBundle(chatId, data.slice('export:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
@@ -155,7 +158,11 @@ export class TelegramBot {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /status <job_id>', mainButtons());
     const job = this.orchestrator.getJob(jobId);
     if (!job) return this.sendMessage(chatId, 'Job not found in current process memory.', mainButtons());
-    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nWeb target: ${job.targetUrl}\nVerified: ${job.verified}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nFindings: ${job.findings.length}`, jobButtons(job.id, job.orderId));
+    const runs = this.orchestrator.scanRuns(job.id);
+    const lastRepo = runs.find((r) => r.type === 'repo');
+    const lastWeb = runs.find((r) => r.type === 'web');
+    const sev = severitySummary(job.findings);
+    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nWeb target: ${job.targetUrl}\nVerified: ${job.verified}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
   }
 
   private async myJobs(chatId: string | number, userId: string): Promise<void> {
@@ -173,10 +180,17 @@ export class TelegramBot {
 
   private async report(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Usage: /report <job_id>', mainButtons());
-    const reports = this.orchestrator.reportsByJob.get(jobId);
-    if (!reports) return this.sendMessage(chatId, 'Report not generated yet. Run scan first.', runButtons(jobId));
-    await this.sendDocument(chatId, reports.pdf, 'PDF report');
-    await this.sendDocument(chatId, reports.json, 'JSON report');
+    const reports = await this.orchestrator.refreshReport(jobId);
+    await this.sendDocument(chatId, reports.pdf, 'Latest PDF report');
+    await this.sendDocument(chatId, reports.json, 'Latest JSON report');
+  }
+
+  private async exportBundle(chatId: string | number, jobId?: string): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, 'Usage: /export <job_id>', mainButtons());
+    const bundle = await this.orchestrator.exportBundle(jobId);
+    await this.sendDocument(chatId, bundle.reports.pdf, 'Export: PDF report');
+    await this.sendDocument(chatId, bundle.reports.json, 'Export: JSON report');
+    await this.sendDocument(chatId, bundle.audit, 'Export: redacted audit JSONL');
   }
 
   private async harden(chatId: string | number, jobId?: string): Promise<void> {
@@ -254,7 +268,8 @@ export class TelegramBot {
       { command: 'status', description: 'Check job status' },
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
-      { command: 'report', description: 'Send report files' },
+      { command: 'report', description: 'Send latest report files' },
+      { command: 'export', description: 'Send report + audit bundle' },
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
@@ -309,5 +324,5 @@ function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Export Bundle', callback_data: `export:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

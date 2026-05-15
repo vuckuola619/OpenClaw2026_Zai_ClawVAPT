@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import type { AgentResult, Job, ToolStatus } from '../types/index.js';
+import type { AgentResult, Finding, Job, ScanRun, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
@@ -26,6 +26,7 @@ export class MainOrchestrator {
   repoConnector = new GitHubRepoConnector();
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
+  scanRunsByJob = new Map<string, ScanRun[]>();
   creditedOrders = new Set<string>();
 
   constructor(store = new PersistentStore()) {
@@ -33,6 +34,7 @@ export class MainOrchestrator {
     this.quota = new QuotaStore(this.store.loadQuotas(), (q) => this.store.saveQuota(q.userHash, q.scans, q.credits));
     for (const job of this.store.loadJobs()) this.jobs.set(job.id, job);
     for (const report of this.store.loadReports()) this.reportsByJob.set(report.jobId, { json: report.json, pdf: report.pdf });
+    for (const run of this.store.loadScanRuns()) this.scanRunsByJob.set(run.jobId, [...(this.scanRunsByJob.get(run.jobId) || []), run]);
     this.creditedOrders = this.store.loadCreditedOrders();
   }
 
@@ -94,7 +96,7 @@ export class MainOrchestrator {
     await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', planEnvelope.result.next_state, 'APPROVAL_GATE', 'plan_patch', 'PatchGenerator', 'MOCK', {}, { patch });
     await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', 'APPROVAL_GATE', 'RETEST', 'retest_required', 'RetestRunner', 'DONE', {}, { fixed_marked: false });
     const tools = await new ExternalSecurityToolRunner(this.audit).checkAll(job.id, job.userIdHash);
-    const reports = await new ReportGenerator().generate(job, scan.correlations, tools, false);
+    const reports = await new ReportGenerator().generate(job, scan.correlations, tools, false, this.scanRunsByJob.get(job.id) || []);
     this.reportsByJob.set(job.id, reports);
     this.store.saveReport(job.id, reports);
     this.correlationsByJob.set(job.id, scan.correlations);
@@ -149,7 +151,13 @@ export class MainOrchestrator {
     const job = this.mustJob(jobId);
     if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
     if (!job.repoPath) throw new Error('REPO_NOT_CONNECTED');
-    return new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
+    const result = await new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
+    job.findings = mergeFindings(job.findings, result.findings);
+    job.state = `REPO_SCAN_${profile.toUpperCase()}_COMPLETE`;
+    this.store.saveJob(job);
+    this.recordScanRun({ id: `RUN-${randomUUID().slice(0, 8)}`, jobId: job.id, type: 'repo', profile, tools: result.tools, findings: result.findings, approval: 'repo_connected_by_user', createdAt: new Date().toISOString() });
+    await this.refreshReport(job.id, result.tools);
+    return result;
   }
 
   activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }
@@ -163,10 +171,33 @@ export class MainOrchestrator {
   async runActiveWebScan(jobId: string, userId: string, approved = false, profile: WebScanProfile = 'safe'): Promise<ActiveWebScanResult> {
     const job = this.mustJob(jobId);
     const result = await this.activeWebScanner.scan({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved, profile });
-    job.findings = [...job.findings, ...result.findings];
-    job.state = 'ACTIVE_WEB_SCAN_COMPLETE';
+    job.findings = mergeFindings(job.findings, result.findings);
+    job.state = `ACTIVE_WEB_SCAN_${profile.toUpperCase()}_COMPLETE`;
     this.store.saveJob(job);
+    this.recordScanRun({ id: `RUN-${randomUUID().slice(0, 8)}`, jobId: job.id, type: 'web', profile, tools: result.tools, findings: result.findings, approval: result.approval, createdAt: new Date().toISOString() });
+    await this.refreshReport(job.id, result.tools);
     return result;
+  }
+
+  scanRuns(jobId: string): ScanRun[] { return this.scanRunsByJob.get(jobId) || []; }
+
+  async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string }> {
+    const reports = await this.refreshReport(jobId, []);
+    return { reports, audit: process.env.DEMO_AUDIT_LOG_PATH || 'logs/demo_audit.jsonl' };
+  }
+
+  async refreshReport(jobId: string, tools: ToolStatus[] = []): Promise<{ json: string; pdf: string }> {
+    const job = this.mustJob(jobId);
+    const correlations = this.correlationsByJob.get(job.id) || [];
+    const reports = await new ReportGenerator().generate(job, correlations, tools, false, this.scanRunsByJob.get(job.id) || []);
+    this.reportsByJob.set(job.id, reports);
+    this.store.saveReport(job.id, reports);
+    return reports;
+  }
+
+  private recordScanRun(run: ScanRun): void {
+    this.store.saveScanRun(run);
+    this.scanRunsByJob.set(run.jobId, [run, ...(this.scanRunsByJob.get(run.jobId) || [])]);
   }
 
   async demo(): Promise<{ job: Job; reports: { json: string; pdf: string }; transcript: string; tools: ToolStatus[] }> {
@@ -182,7 +213,7 @@ export class MainOrchestrator {
       this.quota.addCredits(job.userIdHash, 10);
       await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'CHECK_QUOTA_OR_PAYMENT', 'CREATE_SCAN_PLAN', 'simulate_payment', 'PakasirAdapter', 'MOCK', { orderId: job.orderId }, { credits_added: 10 });
     }
-    const sampleReports = await new ReportGenerator().generate(job, result.correlations, result.tools, true);
+    const sampleReports = await new ReportGenerator().generate(job, result.correlations, result.tools, true, this.scanRunsByJob.get(job.id) || []);
     const transcript = await this.writeTranscript(job, sampleReports);
     return { job, reports: sampleReports, transcript, tools: result.tools };
   }
@@ -199,4 +230,10 @@ export class MainOrchestrator {
     if (!job) throw new Error('JOB_NOT_FOUND');
     return job;
   }
+}
+
+function mergeFindings(existing: Finding[], incoming: Finding[]): Finding[] {
+  const map = new Map<string, Finding>();
+  for (const finding of [...existing, ...incoming]) map.set(`${finding.source}:${finding.id}:${finding.title}`, finding);
+  return [...map.values()];
 }

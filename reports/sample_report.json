@@ -1,33 +1,99 @@
 {
-  "job_id": "JOB-d0b5c1e4",
-  "generated_at": "2026-05-15T09:34:06.556Z",
+  "job_id": "JOB-5b8e85ed",
+  "generated_at": "2026-05-15T11:17:51.456Z",
+  "target": {
+    "web_url": "https://demo-owned-site.local/",
+    "repo_url": null,
+    "repo_commit": null
+  },
   "authorization_and_scope": {
     "verified": true,
     "scope_locked": true,
     "scope_host": "demo-owned-site.local"
   },
+  "scan_runs": [],
+  "severity_summary": {
+    "INFO": 1,
+    "LOW": 3,
+    "MEDIUM": 2,
+    "HIGH": 3,
+    "CRITICAL": 0
+  },
   "methodology": [
     "pre-engagement",
     "ownership verification",
     "scope lock",
-    "safe URL scanner",
-    "safe repo scanner",
+    "GitHub repo attachment",
+    "safe/deep repo scanner",
+    "safe/deep web scanner",
     "normalization",
     "correlation",
     "redaction",
     "reporting"
   ],
+  "tool_matrix": [
+    {
+      "name": "zap-baseline.py",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "nuclei",
+      "status": "INCOMPLETE",
+      "mode": "adapter_available_not_executed_in_demo"
+    },
+    {
+      "name": "testssl.sh",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "semgrep",
+      "status": "INCOMPLETE",
+      "mode": "adapter_available_not_executed_in_demo"
+    },
+    {
+      "name": "gitleaks",
+      "status": "INCOMPLETE",
+      "mode": "adapter_available_not_executed_in_demo"
+    },
+    {
+      "name": "trivy",
+      "status": "INCOMPLETE",
+      "mode": "adapter_available_not_executed_in_demo"
+    },
+    {
+      "name": "osv-scanner",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "checkov",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "syft",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "grype",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "lynis",
+      "status": "INCOMPLETE",
+      "mode": "not_installed"
+    },
+    {
+      "name": "oscap",
+      "status": "FUTURE",
+      "mode": "not_installed"
+    }
+  ],
   "tools_used": [
-    {
-      "name": "SafeUrlScanner",
-      "mode": "BUILTIN",
-      "status": "DONE"
-    },
-    {
-      "name": "RepoScanner",
-      "mode": "BUILTIN",
-      "status": "DONE"
-    },
     {
       "name": "zap-baseline.py",
       "available": false,
@@ -39,11 +105,11 @@
     },
     {
       "name": "nuclei",
-      "available": false,
+      "available": true,
       "status": "INCOMPLETE",
-      "mode": "not_installed",
+      "mode": "adapter_available_not_executed_in_demo",
       "notes": [
-        "Unavailable; demo continues with built-in scanner."
+        "Available; safe wrapper present; execution requires verified scope."
       ]
     },
     {
@@ -57,29 +123,29 @@
     },
     {
       "name": "semgrep",
-      "available": false,
+      "available": true,
       "status": "INCOMPLETE",
-      "mode": "not_installed",
+      "mode": "adapter_available_not_executed_in_demo",
       "notes": [
-        "Unavailable; demo continues with built-in scanner."
+        "Available; safe wrapper present; execution requires verified scope."
       ]
     },
     {
       "name": "gitleaks",
-      "available": false,
+      "available": true,
       "status": "INCOMPLETE",
-      "mode": "not_installed",
+      "mode": "adapter_available_not_executed_in_demo",
       "notes": [
-        "Unavailable; demo continues with built-in scanner."
+        "Available; safe wrapper present; execution requires verified scope."
       ]
     },
     {
       "name": "trivy",
-      "available": false,
+      "available": true,
       "status": "INCOMPLETE",
-      "mode": "not_installed",
+      "mode": "adapter_available_not_executed_in_demo",
       "notes": [
-        "Unavailable; demo continues with built-in scanner."
+        "Available; safe wrapper present; execution requires verified scope."
       ]
     },
     {
@@ -200,7 +266,7 @@
       "evidence": [
         {
           "type": "url",
-          "url": "https://demo-owned-site.local",
+          "url": "https://demo-owned-site.local/",
           "summary": "Demo fixture indicates CSP header is absent.",
           "redacted": true
         }
@@ -234,7 +300,7 @@
       "evidence": [
         {
           "type": "url",
-          "url": "https://demo-owned-site.local",
+          "url": "https://demo-owned-site.local/",
           "summary": "Demo fixture indicates server header exists; value redacted.",
           "redacted": true
         }
@@ -285,7 +351,7 @@
       "evidence": [
         {
           "type": "url",
-          "url": "https://demo-owned-site.local",
+          "url": "https://demo-owned-site.local/",
           "summary": "Only status was checked; content was never fetched or dumped.",
           "redacted": true
         }
@@ -306,10 +372,14 @@
       "reason": "Runtime header weakness relates to app/server hardening evidence."
     }
   ],
+  "remediation_priorities": [
+    "P2: patch high-risk code/dependencies and retest within SLA.",
+    "Hardening: enforce CSP, HSTS, X-Frame-Options/frame-ancestors, X-Content-Type-Options, Referrer-Policy."
+  ],
   "limitations": [
-    "Demo uses safe deterministic target for .local domains.",
-    "External adapters are availability-checked and not executed unless installed and scope gates pass.",
-    "Payment may be MOCK in DEMO_MODE."
+    "Scanner findings require manual validation before client-facing severity finalization.",
+    "Logic flaws such as IDOR, tenant isolation, payment/business rules, and prompt/API misuse require manual review.",
+    "Evidence is redacted; raw secrets and response bodies are not exported."
   ],
   "redaction_applied": true
 }
