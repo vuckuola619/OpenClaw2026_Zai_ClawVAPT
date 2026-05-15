@@ -179,6 +179,17 @@ export class MainOrchestrator {
     return result;
   }
 
+  async runStrictNmapScan(jobId: string, userId: string, approved = false) {
+    const job = this.mustJob(jobId);
+    const result = await this.activeWebScanner.scanNmapStrict({ jobId: job.id, userHash: this.hashUser(userId), targetUrl: job.targetUrl, verified: job.verified, scopeLocked: job.scopeLocked, scopeHost: job.scopeHost, approved });
+    job.findings = mergeFindings(job.findings, result.findings);
+    job.state = 'STRICT_NMAP_SCAN_COMPLETE';
+    this.store.saveJob(job);
+    this.recordScanRun({ id: `RUN-${randomUUID().slice(0, 8)}`, jobId: job.id, type: 'web', profile: 'nmap-strict', tools: result.tools, findings: result.findings, approval: result.approval, createdAt: new Date().toISOString() });
+    await this.refreshReport(job.id, result.tools);
+    return result;
+  }
+
   scanRuns(jobId: string): ScanRun[] { return this.scanRunsByJob.get(jobId) || []; }
 
   async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string }> {

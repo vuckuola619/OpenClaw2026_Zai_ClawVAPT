@@ -9,6 +9,7 @@ import { FindingNormalizer } from './FindingNormalizer.js';
 
 export type WebScanProfile = 'safe' | 'deep';
 export interface ActiveWebScanResult { tools: ToolStatus[]; findings: Finding[]; approval: 'EXPLICIT_CALLBACK'; targetUrl: string; profile: WebScanProfile }
+export interface StrictNmapScanResult { tools: ToolStatus[]; findings: Finding[]; approval: 'EXPLICIT_NETWORK_SCAN_CALLBACK'; targetUrl: string; profile: 'nmap-strict' }
 
 export class ActiveWebScanner {
   private scope = new ScopeGuard();
@@ -55,8 +56,21 @@ export class ActiveWebScanner {
       { name: 'NucleiSafeProfile', status: nucleiReady ? 'DONE' : 'INCOMPLETE', available: nucleiReady, mode: 'active_web_safe_templates', notes: ['Requires verified ownership, locked scope, explicit approval, and per-target rate cap.'] },
       { name: 'NucleiDeepProfile', status: nucleiReady ? 'DONE' : 'INCOMPLETE', available: nucleiReady, mode: 'enterprise_deep_non_destructive', notes: ['Enables CVE/KEV and injection-detection templates but still excludes destructive classes.'] },
       { name: 'NiktoDeepProfile', status: this.exists('nikto') ? 'DONE' : 'INCOMPLETE', available: this.exists('nikto'), mode: 'enterprise_controlled_web_server_scan', notes: ['Controlled tuning; excludes DoS and command execution classes.'] },
-      { name: 'Nmap', status: this.exists('nmap') ? 'FUTURE' : 'INCOMPLETE', available: this.exists('nmap'), mode: 'disabled_pending_strict_profile', notes: ['Installed status only; execution disabled until stricter network profile controls.'] }
+      { name: 'NmapStrictProfile', status: this.exists('nmap') ? 'DONE' : 'INCOMPLETE', available: this.exists('nmap'), mode: 'tcp_connect_single_host_low_rate', notes: ['Single locked host only; TCP connect scan; explicit network-scan consent; no UDP, OS detect, NSE vuln/brute, evasion, or broad ranges.'] }
     ];
+  }
+
+  async scanNmapStrict(params: { jobId: string; userHash: string; targetUrl: string; verified: boolean; scopeLocked: boolean; scopeHost: string; approved: boolean }): Promise<StrictNmapScanResult> {
+    const { jobId, userHash, targetUrl, verified, scopeLocked, scopeHost, approved } = params;
+    if (!approved) throw new Error('NETWORK_SCAN_APPROVAL_REQUIRED');
+    this.scope.assertCanScan(verified, scopeLocked);
+    this.scope.assertInScope(targetUrl, scopeHost);
+    this.limiter.assertAllowed(`active-web:nmap-strict:${userHash}:${scopeHost}`, 1);
+    await this.audit.transition(jobId, userHash, 'RedTeamRepoScannerAgent', 'APPROVAL_GATE', 'STRICT_NMAP_SCAN', 'strict_nmap_scan_start', 'NmapStrictProfile', 'DONE', { targetHost: scopeHost, profile: 'nmap-strict' }, { approved: true, single_host: true, rate_limited: true });
+    const result = this.runNmapStrict(targetUrl, scopeHost);
+    const findings = this.normalizer.normalize(result.findings);
+    await this.audit.transition(jobId, userHash, 'RedTeamRepoScannerAgent', 'STRICT_NMAP_SCAN', 'STRICT_NMAP_SCAN_COMPLETE', 'strict_nmap_scan_complete', 'NmapStrictProfile', result.status.status, { targetHost: scopeHost, profile: 'nmap-strict' }, { findings: findings.length, tools: 1 });
+    return { tools: [result.status], findings, approval: 'EXPLICIT_NETWORK_SCAN_CALLBACK', targetUrl, profile: 'nmap-strict' };
   }
 
   private runNuclei(targetUrl: string, profile: WebScanProfile): { status: ToolStatus; findings: Finding[] } {
@@ -115,6 +129,17 @@ export class ActiveWebScanner {
     return { status: { name: 'NiktoDeepProfile', status: result.status === null ? 'ERROR' : 'DONE', available: true, mode: 'executed_controlled_deep_profile', notes: [`Nikto controlled profile executed. Exit: ${result.status ?? 'timeout'}`] }, findings };
   }
 
+  private runNmapStrict(targetUrl: string, scopeHost: string): { status: ToolStatus; findings: Finding[] } {
+    if (!this.exists('nmap')) return { status: { name: 'NmapStrictProfile', status: 'INCOMPLETE', available: false, mode: 'not_installed', notes: ['nmap binary missing.'] }, findings: [] };
+    const url = new URL(targetUrl);
+    if (url.hostname !== scopeHost) throw new Error('OUT_OF_SCOPE');
+    const ports = strictPorts();
+    const args = ['-sT', '-Pn', '-n', '--max-retries', '1', '--host-timeout', String(process.env.NMAP_STRICT_HOST_TIMEOUT || '30s'), '--scan-delay', String(process.env.NMAP_STRICT_SCAN_DELAY || '250ms'), '--max-rate', String(Number(process.env.NMAP_STRICT_MAX_RATE || 5)), '-T2', '-p', ports, '--version-light', '--version-intensity', '2', '-oX', '-', scopeHost];
+    const result = spawnSync('nmap', args, { encoding: 'utf8', timeout: Number(process.env.NMAP_STRICT_PROCESS_TIMEOUT_MS || 45000), maxBuffer: 2_000_000 });
+    const findings = parseNmapOpenPorts(result.stdout, targetUrl);
+    return { status: { name: 'NmapStrictProfile', status: result.status === null ? 'ERROR' : 'DONE', available: true, mode: 'executed_tcp_connect_single_host_low_rate', notes: [`Strict Nmap executed against one locked host. Ports: ${ports}. Exit: ${result.status ?? 'timeout'}. No UDP, NSE vuln/brute, OS detect, evasion, or broad range.`] }, findings };
+  }
+
   private fromNuclei(item: Record<string, unknown>, idx: number, targetUrl: string, profile: WebScanProfile): Finding {
     const info = typeof item.info === 'object' && item.info ? item.info as Record<string, unknown> : {};
     const id = String(item['template-id'] || item['templateID'] || `nuclei-${idx}`);
@@ -135,6 +160,33 @@ export class ActiveWebScanner {
   }
 
   private exists(name: string): boolean { return spawnSync('bash', ['-lc', `command -v ${name}`], { encoding: 'utf8' }).status === 0; }
+}
+
+function strictPorts(): string {
+  const raw = process.env.NMAP_STRICT_PORTS || '80,443,8080,8443,3000,5000,8000,9000';
+  const ports = raw.split(',').map((p) => p.trim()).filter((p) => /^\d{1,5}$/.test(p)).map(Number).filter((p) => p > 0 && p <= 65535).slice(0, 20);
+  return ports.length ? [...new Set(ports)].join(',') : '80,443';
+}
+
+function parseNmapOpenPorts(xml: string, targetUrl: string): Finding[] {
+  const findings: Finding[] = [];
+  const portBlocks = xml.match(/<port protocol="tcp" portid="\d+">[\s\S]*?<\/port>/g) || [];
+  for (const block of portBlocks) {
+    if (!/<state state="open"/.test(block)) continue;
+    const port = /portid="(\d+)"/.exec(block)?.[1] || 'unknown';
+    const service = /<service[^>]*name="([^"]+)"/.exec(block)?.[1] || 'unknown';
+    const product = /product="([^"]+)"/.exec(block)?.[1] || '';
+    const version = /version="([^"]+)"/.exec(block)?.[1] || '';
+    const serviceText = [service, product, version].filter(Boolean).join(' ');
+    findings.push({ id: `NMAP-TCP-${port}`, title: `Open TCP port ${port}`, severity: nmapSeverity(port, serviceText), status: 'OPEN', description: `Strict Nmap found TCP/${port} open (${serviceText || 'unknown service'}).`, remediation: 'Confirm business need, restrict exposure with firewall/security group, patch service, and retest.', source: 'EXTERNAL', evidence: [{ type: 'url', url: targetUrl, summary: `TCP/${port} open; service evidence redacted to banner summary only.`, redacted: true }] });
+  }
+  return findings.slice(0, 50);
+}
+
+function nmapSeverity(port: string, serviceText: string): Finding['severity'] {
+  if (/^(21|23|445|3389|3306|5432|6379|9200|27017)$/.test(port)) return 'MEDIUM';
+  if (/admin|database|redis|mongo|mysql|postgres|rdp|telnet|smb/i.test(serviceText)) return 'MEDIUM';
+  return 'INFO';
 }
 
 function severityFromString(value: string): Finding['severity'] {

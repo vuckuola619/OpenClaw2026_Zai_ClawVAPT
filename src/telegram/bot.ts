@@ -51,6 +51,7 @@ export class TelegramBot {
       if (cmd === '/repo_scan_deep') return this.repoScan(chatId, userId, 'deep', args[0]);
       if (cmd === '/web_scan') return this.webScanPreview(chatId, args[0], 'safe');
       if (cmd === '/web_scan_deep') return this.webScanPreview(chatId, args[0], 'deep');
+      if (cmd === '/nmap_scan') return this.nmapScanPreview(chatId, args[0]);
       if (cmd === '/check_payment' || cmd === '/simulate_payment') return this.checkPayment(chatId, userId, args[0]);
       if (cmd === '/create_pr' || cmd === '/ssh_plan' || cmd === '/approve') return this.sendMessage(chatId, 'Command skeleton ready. Demo mode uses patch-only remediation; no auto-merge, no SSH changes.', mainButtons());
       return this.sendMessage(chatId, 'Unknown command. Tap Help.', mainButtons());
@@ -80,6 +81,8 @@ export class TelegramBot {
       if (data.startsWith('deeppreview:')) return this.webScanPreview(chatId, data.slice('deeppreview:'.length), 'deep');
       if (data.startsWith('activeweb:')) return this.runActiveWebScan(chatId, userId, data.slice('activeweb:'.length), 'safe');
       if (data.startsWith('deepweb:')) return this.runActiveWebScan(chatId, userId, data.slice('deepweb:'.length), 'deep');
+      if (data.startsWith('nmappreview:')) return this.nmapScanPreview(chatId, data.slice('nmappreview:'.length));
+      if (data.startsWith('nmapstrict:')) return this.runStrictNmapScan(chatId, userId, data.slice('nmapstrict:'.length));
       if (data === 'my_jobs') return this.myJobs(chatId, userId);
       if (data === 'latest') return this.latest(chatId, userId);
       if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
@@ -241,6 +244,23 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Active web scan requires explicit approval + agreement.\n\nJob: ${preview.job.id}\nTarget: ${preview.job.targetUrl}\nScope: ${preview.job.scopeHost}\nProfile: ${profile.toUpperCase()}\n\nEnabled profile:\n${tools}\n\nRisk note:\n${warning}\n\nAgreement:\n${agreement}`, activeWebApproveButtons(preview.job.id, profile));
   }
 
+  private async nmapScanPreview(chatId: string | number, jobId?: string): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, 'Usage: /nmap_scan <job_id>', mainButtons());
+    const preview = await this.orchestrator.previewActiveWebScan(jobId, 'deep');
+    const nmap = preview.tools.find((t) => t.name === 'NmapStrictProfile');
+    const tools = `• NmapStrictProfile: ${nmap?.available ? 'available' : 'missing'} (${nmap?.mode || 'tcp_connect_single_host_low_rate'})`;
+    const agreement = 'By approving, you confirm written permission for a network port scan on this locked host, accept operational noise/logging risk, and agree ClawVAPT must only scan listed TCP ports on the verified scope host.';
+    await this.sendMessage(chatId, `Strict Nmap scan requires explicit network-scan approval + agreement.\n\nJob: ${preview.job.id}\nTarget: ${preview.job.targetUrl}\nScope host: ${preview.job.scopeHost}\nProfile: NMAP-STRICT\n\nEnabled profile:\n${tools}\n\nLimits:\n• single locked host only\n• TCP connect scan only\n• low rate / low concurrency\n• limited ports: ${process.env.NMAP_STRICT_PORTS || '80,443,8080,8443,3000,5000,8000,9000'}\n• no UDP\n• no OS detection\n• no NSE vuln/brute/default-login scripts\n• no evasion/decoy/spoofing\n• no broad ranges\n\nAgreement:\n${agreement}`, nmapApproveButtons(preview.job.id));
+  }
+
+  private async runStrictNmapScan(chatId: string | number, userId: string, jobId?: string): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
+    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...`);
+    const result = await this.orchestrator.runStrictNmapScan(jobId, userId, true);
+    const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No open ports found in strict profile.';
+    await this.sendMessage(chatId, `Strict Nmap scan complete\nTarget: ${result.targetUrl}\nProfile: NMAP-STRICT\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
+  }
+
   private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
     await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...`);
@@ -265,6 +285,7 @@ export class TelegramBot {
       { command: 'connect_repo', description: 'Attach GitHub repo to job' },
       { command: 'web_scan', description: 'Approve active web safe scan' },
       { command: 'web_scan_deep', description: 'Approve enterprise deep web scan' },
+      { command: 'nmap_scan', description: 'Approve strict Nmap scan' },
       { command: 'status', description: 'Check job status' },
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
@@ -321,8 +342,9 @@ export async function startTelegramBot(): Promise<TelegramBot> {
 function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'My Jobs', callback_data: 'my_jobs' }, { text: 'Latest', callback_data: 'latest' }], [{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Pay / Top Up', callback_data: 'pay' }], [{ text: 'Health', callback_data: 'health' }, { text: 'Help', callback_data: 'help' }], [{ text: 'Demo / Sandbox', callback_data: 'demo' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Verify Demo Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
+function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Export Bundle', callback_data: `export:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

@@ -186,7 +186,8 @@ function rowToJob(row: Row): Job {
   };
 }
 function rowToScanRun(row: Row): ScanRun {
-  return { id: str(row.id), jobId: str(row.job_id), type: str(row.scan_type) === 'web' ? 'web' : 'repo', profile: str(row.profile) === 'deep' ? 'deep' : 'safe', tools: parseTools(str(row.tools_json)), findings: parseFindings(str(row.findings_json)), approval: str(row.approval), createdAt: str(row.created_at) };
+  const profile = str(row.profile);
+  return { id: str(row.id), jobId: str(row.job_id), type: str(row.scan_type) === 'web' ? 'web' : 'repo', profile: profile === 'deep' || profile === 'nmap-strict' ? profile : 'safe', tools: parseTools(str(row.tools_json)), findings: parseFindings(str(row.findings_json)), approval: str(row.approval), createdAt: str(row.created_at) };
 }
 function parseFindings(raw: string): Job['findings'] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
 function parseTools(raw: string): ToolStatus[] { try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
