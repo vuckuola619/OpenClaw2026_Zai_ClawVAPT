@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { Finding, Job, ScanRun, Severity, ToolStatus } from '../types/index.js';
 import type { Correlation } from '../tools/Correlator.js';
+import { manualPrioritySummary, manualReviewChecklist } from './ManualReview.js';
 function escPdf(s:string){ return s.replace(/[\\()]/g, m=>`\\${m}`).replace(/[\r\n]+/g,' '); }
 
 export class ReportGenerator {
@@ -12,6 +13,7 @@ export class ReportGenerator {
     const pdfPath=`${this.dir}/${base}.pdf`;
     const severity = severitySummary(job.findings);
     const toolMatrix = toolMatrixFrom(tools, scanRuns);
+    const manualReview = manualReviewChecklist(job);
     const report = {
       job_id: job.id,
       generated_at: new Date().toISOString(),
@@ -25,6 +27,8 @@ export class ReportGenerator {
       findings: job.findings,
       correlations,
       remediation_priorities: remediationPriorities(job.findings),
+      manual_review_checklist: manualReview,
+      manual_review_priorities: manualPrioritySummary(job.findings, manualReview),
       limitations:['Scanner findings require manual validation before client-facing severity finalization.','Logic flaws such as IDOR, tenant isolation, payment/business rules, and prompt/API misuse require manual review.','Evidence is redacted; raw secrets and response bodies are not exported.'],
       redaction_applied:true
     };
@@ -45,6 +49,7 @@ export class ReportGenerator {
       ...tools.slice(0,10).map(t=>`${t.name} ${t.status} ${t.mode}`),
       'Findings Summary:',
       ...findings.slice(0,14).map(f=>`${f.severity}: ${f.title}`),
+      'Manual Review Priorities: IDOR/authZ, workflow bypass, payment integrity, tenant isolation, AI/tool misuse.',
       'Remediation: prioritize Critical/High, secrets rotation, authZ review, dependency patching, header hardening.',
       'Evidence redacted. Manual validation required before closure.'
     ];

@@ -42,6 +42,7 @@ export class TelegramBot {
       if (cmd === '/latest') return this.latest(chatId, userId);
       if (cmd === '/report') return this.report(chatId, args[0]);
       if (cmd === '/export') return this.exportBundle(chatId, args[0]);
+      if (cmd === '/manual_review') return this.manualReview(chatId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health') return this.health(chatId);
@@ -88,6 +89,7 @@ export class TelegramBot {
       if (data.startsWith('status:')) return this.status(chatId, data.slice('status:'.length));
       if (data.startsWith('report:')) return this.report(chatId, data.slice('report:'.length));
       if (data.startsWith('export:')) return this.exportBundle(chatId, data.slice('export:'.length));
+      if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
       return this.sendMessage(chatId, 'Button action unknown.', mainButtons());
@@ -194,6 +196,16 @@ export class TelegramBot {
     await this.sendDocument(chatId, bundle.reports.pdf, 'Export: PDF report');
     await this.sendDocument(chatId, bundle.reports.json, 'Export: JSON report');
     await this.sendDocument(chatId, bundle.audit, 'Export: redacted audit JSONL');
+    await this.sendDocument(chatId, bundle.manualReview.markdown, 'Export: manual review checklist');
+  }
+
+  private async manualReview(chatId: string | number, jobId?: string): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, 'Usage: /manual_review <job_id>', mainButtons());
+    const items = this.orchestrator.manualReviewSummary(jobId);
+    const report = await this.orchestrator.manualReview(jobId);
+    const top = items.slice(0, 6).map((item) => `• ${item.priority} ${item.area}: ${item.risk}`).join('\n');
+    await this.sendMessage(chatId, `Manual review checklist ready\nJob: ${jobId}\n\nPriority areas:\n${top}\n\nUse authorized test accounts and safe test data only. Scanner results do not prove business-logic safety.`, jobButtons(jobId));
+    await this.sendDocument(chatId, report.markdown, 'Manual review checklist');
   }
 
   private async harden(chatId: string | number, jobId?: string): Promise<void> {
@@ -291,6 +303,7 @@ export class TelegramBot {
       { command: 'latest', description: 'Show latest job' },
       { command: 'report', description: 'Send latest report files' },
       { command: 'export', description: 'Send report + audit bundle' },
+      { command: 'manual_review', description: 'Send manual review checklist' },
       { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
@@ -346,5 +359,5 @@ function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ 
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Export Bundle', callback_data: `export:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

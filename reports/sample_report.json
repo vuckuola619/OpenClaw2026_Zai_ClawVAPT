@@ -1,6 +1,6 @@
 {
-  "job_id": "JOB-5b8e85ed",
-  "generated_at": "2026-05-15T11:17:51.456Z",
+  "job_id": "JOB-02c4828d",
+  "generated_at": "2026-05-15T12:17:45.443Z",
   "target": {
     "web_url": "https://demo-owned-site.local/",
     "repo_url": null,
@@ -375,6 +375,123 @@
   "remediation_priorities": [
     "P2: patch high-risk code/dependencies and retest within SLA.",
     "Hardening: enforce CSP, HSTS, X-Frame-Options/frame-ancestors, X-Content-Type-Options, Referrer-Policy."
+  ],
+  "manual_review_checklist": [
+    {
+      "area": "Authorization / IDOR",
+      "risk": "User accesses or modifies another user's object by changing IDs, slugs, UUIDs, or ownership fields.",
+      "whyScannerMissesIt": "Requires multiple accounts and business context; static scanners cannot know object ownership boundaries.",
+      "testPlan": [
+        "Create two low-privilege accounts A/B.",
+        "Capture read/update/delete requests for A-owned resources.",
+        "Replace object identifiers with B-owned identifiers.",
+        "Verify server-side ownership checks on every endpoint, not only UI routes."
+      ],
+      "evidenceNeeded": [
+        "A/B account roles",
+        "request/response pairs",
+        "object IDs tested",
+        "expected vs actual access decision"
+      ],
+      "priority": "P1"
+    },
+    {
+      "area": "Business workflow bypass",
+      "risk": "User skips required steps such as verification, approval, payment, MFA, or onboarding.",
+      "whyScannerMissesIt": "Requires knowing intended workflow order and state transitions.",
+      "testPlan": [
+        "Map required workflow states.",
+        "Attempt direct final-step request before prerequisites.",
+        "Replay old valid requests after state changes.",
+        "Test duplicate submission and one-time action reuse."
+      ],
+      "evidenceNeeded": [
+        "workflow diagram",
+        "state before/after",
+        "blocked/allowed requests",
+        "server-side validation points"
+      ],
+      "priority": "P1"
+    },
+    {
+      "area": "Payment / quota / credit integrity",
+      "risk": "Price, credit, quota, order status, or payment confirmation can be manipulated or replayed.",
+      "whyScannerMissesIt": "Requires domain rules, payment lifecycle knowledge, and safe test orders.",
+      "testPlan": [
+        "Modify amount/quantity/credit fields client-side.",
+        "Replay payment callbacks or order IDs.",
+        "Check idempotency by repeating paid-order confirmation.",
+        "Verify server computes trusted totals and payment status."
+      ],
+      "evidenceNeeded": [
+        "test order IDs",
+        "amounts before/after",
+        "callback replay result",
+        "credit ledger entries"
+      ],
+      "priority": "P1"
+    },
+    {
+      "area": "Tenant isolation",
+      "risk": "Cross-tenant data exposure through shared IDs, search, exports, reports, or background jobs.",
+      "whyScannerMissesIt": "Requires tenant-aware fixtures and role/organization boundaries.",
+      "testPlan": [
+        "Create two tenants/orgs with similar data.",
+        "Test list/search/export/report endpoints across tenants.",
+        "Check background jobs and webhooks for tenant scoping.",
+        "Verify DB queries include tenant constraints."
+      ],
+      "evidenceNeeded": [
+        "tenant IDs",
+        "role matrix",
+        "cross-tenant request attempts",
+        "query/code references"
+      ],
+      "priority": "P1"
+    },
+    {
+      "area": "Rate limits and abuse economics",
+      "risk": "Features can be spammed to exhaust credits, emails, AI tokens, reports, or third-party APIs.",
+      "whyScannerMissesIt": "Requires cost model and abuse scenario design beyond vulnerability signatures.",
+      "testPlan": [
+        "Identify expensive actions.",
+        "Test per-user, per-IP, per-object, and global rate limits.",
+        "Check retry/idempotency handling.",
+        "Verify failed actions still have sane limits."
+      ],
+      "evidenceNeeded": [
+        "limit config",
+        "request counts",
+        "cost impact estimate",
+        "429/error behavior"
+      ],
+      "priority": "P2"
+    },
+    {
+      "area": "AI / prompt / agent misuse",
+      "risk": "LLM features leak data, ignore tool boundaries, run unauthorized actions, or accept prompt injection.",
+      "whyScannerMissesIt": "Requires adversarial prompts, tool-permission context, and app-specific data boundaries.",
+      "testPlan": [
+        "Test prompt injection in user content and uploaded files.",
+        "Verify tools require server-side authorization.",
+        "Check cross-user memory/data isolation.",
+        "Force model to reveal secrets or system prompts and confirm redaction."
+      ],
+      "evidenceNeeded": [
+        "prompt payloads",
+        "tool call logs",
+        "redacted outputs",
+        "authorization decision trail"
+      ],
+      "priority": "P3"
+    }
+  ],
+  "manual_review_priorities": [
+    "P1: Authorization / IDOR",
+    "P1: Business workflow bypass",
+    "P1: Payment / quota / credit integrity",
+    "P1: Tenant isolation",
+    "P1: verify secret rotation and blast radius manually."
   ],
   "limitations": [
     "Scanner findings require manual validation before client-facing severity finalization.",

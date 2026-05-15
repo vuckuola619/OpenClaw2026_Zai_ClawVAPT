@@ -8,6 +8,7 @@ import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
+import { manualReviewChecklist, writeManualReview } from '../report/ManualReview.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult, type RepoScanProfile } from '../tools/SecurityToolAdapters.js';
 import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
@@ -192,9 +193,20 @@ export class MainOrchestrator {
 
   scanRuns(jobId: string): ScanRun[] { return this.scanRunsByJob.get(jobId) || []; }
 
-  async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string }> {
+  async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string; manualReview: { markdown: string } }> {
     const reports = await this.refreshReport(jobId, []);
-    return { reports, audit: process.env.DEMO_AUDIT_LOG_PATH || 'logs/demo_audit.jsonl' };
+    const manualReview = await this.manualReview(jobId);
+    return { reports, audit: process.env.DEMO_AUDIT_LOG_PATH || 'logs/demo_audit.jsonl', manualReview };
+  }
+
+  async manualReview(jobId: string): Promise<{ markdown: string }> {
+    const job = this.mustJob(jobId);
+    return writeManualReview(job);
+  }
+
+  manualReviewSummary(jobId: string) {
+    const job = this.mustJob(jobId);
+    return manualReviewChecklist(job);
   }
 
   async refreshReport(jobId: string, tools: ToolStatus[] = []): Promise<{ json: string; pdf: string }> {
