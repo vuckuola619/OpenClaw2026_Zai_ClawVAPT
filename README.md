@@ -186,7 +186,7 @@ OpenClaw bridge mode is disabled by default in `.env.example` and uses loopback-
 ### Local Demo
 
 ```bash
-git clone https://github.com/vuckuola619/OpenClaw2026_ZaiZai_ClawVAPT.git
+git clone https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT.git
 cd OpenClaw2026_ZaiZai_ClawVAPT
 npm install
 cp .env.example .env
@@ -302,7 +302,7 @@ docker compose logs --tail=200
 
 | Required Asset | Status / Link |
 |---|---|
-| GitHub Repository | `https://github.com/vuckuola619/OpenClaw2026_ZaiZai_ClawVAPT` — must be Public |
+| GitHub Repository | `https://github.com/vuckuola/OpenClaw2026_ZaiZai_ClawVAPT` — Public |
 | Demo Video | `OpenClaw2026_ZaiZai_ClawVAPT` on YouTube Unlisted — max 2 minutes |
 | Pitch Deck | `OpenClaw2026_ZaiZai_ClawVAPT.pdf` — max 5 slides |
 | Live Deployment Link | Telegram bot `@capithon_bot` |
