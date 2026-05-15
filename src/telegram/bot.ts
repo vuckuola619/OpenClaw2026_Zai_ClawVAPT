@@ -5,6 +5,7 @@ import { RateLimiter } from '../core/RateLimiter.js';
 import { formatSafeError } from '../core/AppError.js';
 import { helpText } from './commands.js';
 import { severitySummary } from '../report/ReportGenerator.js';
+import { DEEP_SCAN_COST, REPO_SCAN_COST, SAFE_SCAN_COST } from '../core/QuotaStore.js';
 
 type InlineButton = { text: string; callback_data?: string; url?: string };
 type TelegramMessage = { message_id: number; chat: { id: number | string }; from?: { id: number | string }; text?: string };
@@ -165,17 +166,19 @@ export class TelegramBot {
   private async runScan(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
     if (!(await this.checkScanLimit(chatId, jobId))) return;
-    await this.sendMessage(chatId, `Running safe scan for ${jobId}...`);
+    await this.sendMessage(chatId, `Running safe scan for ${jobId}...\nEstimated time: 1-3 minutes.\nCost: -${SAFE_SCAN_COST} credits`);
     try {
+      const before = this.orchestrator.getJob(jobId)?.credits;
       const result = await this.orchestrator.runApprovedScan(jobId);
-      await this.sendMessage(chatId, `✅ Scan complete\nEngine: MultiAgentEngine\nAgents: Trust → RedTeam → BlueTeam\nJob: ${jobId}\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
+      const after = result.job.credits;
+      await this.sendMessage(chatId, `✅ Scan complete\nEngine: MultiAgentEngine\nAgents: Trust → RedTeam → BlueTeam\nJob: ${jobId}\nCredits: -${before !== undefined ? before - after : SAFE_SCAN_COST} → ${after} remaining\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
       await this.sendDocument(chatId, result.reports.pdf, 'PDF report');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.startsWith('PAYMENT_REQUIRED:')) {
         const orderId = msg.split(':')[1];
         const job = this.orchestrator.getJob(jobId);
-        await this.sendMessage(chatId, `Payment required for next scan. Order: ${orderId}`, jobButtons(jobId, orderId || job?.orderId));
+        await this.sendMessage(chatId, `Kredit ga cukup untuk scan ini. Top up dulu dengan /pay, lalu retry.\nOrder: ${orderId}\nCurrent credits: ${job?.credits ?? '-'}`, jobButtons(jobId, orderId || job?.orderId));
         return;
       }
       throw error;
@@ -291,14 +294,24 @@ export class TelegramBot {
 
   private async repoScan(chatId: string | number, userId: string, profile: 'safe' | 'deep' = 'safe', repoUrl?: string): Promise<void> {
     if (!repoUrl) return this.sendMessage(chatId, `Usage: /repo_scan${profile === 'deep' ? '_deep' : ''} https://github.com/owner/repo`, mainButtons());
-    await this.sendMessage(chatId, `Running standalone public GitHub ${profile} scan...\nRepo: ${repoUrl}\nCost: 25 credits\nLimit: 1 scan per repo per account.`);
+    if (!(await this.ensureCredits(chatId, userId, REPO_SCAN_COST, 'public GitHub repo scan'))) return;
+    const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
+    const estimate = profile === 'deep' ? '8-20 minutes depending on repo size and dependency checks.' : '3-10 minutes depending on repo size and tool availability.';
+    await this.sendMessage(chatId, `Running standalone public GitHub ${profile} scan...\nRepo: ${repoUrl}\nEstimated time: ${estimate}\nCost: -${REPO_SCAN_COST} credits\nCredits before: ${before}\nLimit: 1 scan per repo per account.`);
     const { job, result, reports } = await this.orchestrator.runStandaloneRepoSecuritySuite(userId, repoUrl, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
     const q = this.orchestrator.quotaSnapshotForUser(userId);
     const ai = result.tools.find((t) => t.name === 'OpenClawCodexGPT55Review');
-    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${job.id}\nRepo: ${job.repoUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: 25 credits\nCredits left: ${q.credits}\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, reportButtons(job.id));
+    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${job.id}\nRepo: ${job.repoUrl}\nProfile: ${result.profile.toUpperCase()}\nCredits: -${before - q.credits} → ${q.credits} remaining\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, reportButtons(job.id));
     await this.sendDocument(chatId, reports.pdf, 'Repo PDF report');
     await this.sendDocument(chatId, reports.json, 'Repo JSON report');
+  }
+
+  private async ensureCredits(chatId: string | number, userId: string, cost: number, label: string): Promise<boolean> {
+    const q = this.orchestrator.quotaSnapshotForUser(userId);
+    if (q.credits >= cost) return true;
+    await this.sendMessage(chatId, `Kredit ga cukup untuk ${label}.\n\nRequired: ${cost} credits\nCurrent: ${q.credits} credits\nKurang: ${cost - q.credits} credits\n\nTop up dulu dengan /pay, lalu retry.`, { inline_keyboard: [[{ text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: 'Menu', callback_data: 'menu' }]] });
+    return false;
   }
 
   private async checkScanLimit(chatId: string | number, jobId: string): Promise<boolean> {
@@ -336,21 +349,27 @@ export class TelegramBot {
 
   private async runStrictNmapScan(chatId: string | number, userId: string, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
-    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...\nEstimated time: 1-3 minutes depending on network latency and open ports.`);
+    if (!(await this.ensureCredits(chatId, userId, SAFE_SCAN_COST, 'strict Nmap scan'))) return;
+    const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
+    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...\nEstimated time: 1-3 minutes depending on network latency and open ports.\nCost: -${SAFE_SCAN_COST} credits\nCredits before: ${before}`);
     const result = await this.orchestrator.runStrictNmapScan(jobId, userId, true);
+    const after = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No open ports found in strict profile.';
-    await this.sendMessage(chatId, `Strict Nmap scan complete\nTarget: ${result.targetUrl}\nProfile: NMAP-STRICT\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
+    await this.sendMessage(chatId, `Strict Nmap scan complete\nTarget: ${result.targetUrl}\nProfile: NMAP-STRICT\nCredits: -${before - after} → ${after} remaining\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
   }
 
   private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
     if (!(await this.checkScanLimit(chatId, jobId))) return;
+    const cost = profile === 'deep' ? DEEP_SCAN_COST : SAFE_SCAN_COST;
+    if (!(await this.ensureCredits(chatId, userId, cost, `active web ${profile} scan`))) return;
+    const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const estimate = profile === 'deep' ? '5-15 minutes depending on target speed, WAF/rate limits, and installed scanners.' : '1-3 minutes for low-noise header + safe template checks.';
-    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...\nEstimated time: ${estimate}`);
+    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...\nEstimated time: ${estimate}\nCost: -${cost} credits\nCredits before: ${before}`);
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
     const q = this.orchestrator.quotaSnapshotForUser(userId);
-    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: ${profile === 'deep' ? 10 : 5} credits\nCredits left: ${q.credits}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nSending PDF, JSON, and manual review report now.`, reportButtons(jobId));
+    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCredits: -${before - q.credits} → ${q.credits} remaining\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nSending PDF, JSON, and manual review report now.`, reportButtons(jobId));
     const reports = await this.orchestrator.refreshReport(jobId, result.tools);
     const manual = await this.orchestrator.manualReview(jobId);
     await this.sendDocument(chatId, reports.pdf, 'Active web PDF report');
