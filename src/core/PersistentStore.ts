@@ -39,6 +39,9 @@ export class PersistentStore {
         repo_url TEXT,
         repo_path TEXT,
         repo_commit TEXT,
+        ownership_token TEXT,
+        verification_method TEXT,
+        verified_at TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -81,8 +84,8 @@ export class PersistentStore {
   saveJob(job: Job): void {
     this.ensureRepoColumns();
     this.db.prepare(`
-      INSERT INTO jobs (id,user_hash,target_url,verified,scope_locked,scope_host,state,free_scan_used,credits,findings_json,order_id,repo_url,repo_path,repo_commit,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+      INSERT INTO jobs (id,user_hash,target_url,verified,scope_locked,scope_host,state,free_scan_used,credits,findings_json,order_id,repo_url,repo_path,repo_commit,ownership_token,verification_method,verified_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         user_hash=excluded.user_hash,
         target_url=excluded.target_url,
@@ -97,8 +100,11 @@ export class PersistentStore {
         repo_url=excluded.repo_url,
         repo_path=excluded.repo_path,
         repo_commit=excluded.repo_commit,
+        ownership_token=excluded.ownership_token,
+        verification_method=excluded.verification_method,
+        verified_at=excluded.verified_at,
         updated_at=CURRENT_TIMESTAMP
-    `).run(job.id, job.userIdHash, job.targetUrl, bool(job.verified), bool(job.scopeLocked), job.scopeHost, job.state, bool(job.freeScanUsed), job.credits, JSON.stringify(job.findings), job.orderId || null, job.repoUrl || null, job.repoPath || null, job.repoCommit || null);
+    `).run(job.id, job.userIdHash, job.targetUrl, bool(job.verified), bool(job.scopeLocked), job.scopeHost, job.state, bool(job.freeScanUsed), job.credits, JSON.stringify(job.findings), job.orderId || null, job.repoUrl || null, job.repoPath || null, job.repoCommit || null, job.ownershipToken || null, job.verificationMethod || null, job.verifiedAt || null);
   }
 
   loadJobs(): Job[] {
@@ -157,7 +163,7 @@ export class PersistentStore {
   }
 
   private ensureRepoColumns(): void {
-    for (const sql of ['ALTER TABLE jobs ADD COLUMN repo_url TEXT', 'ALTER TABLE jobs ADD COLUMN repo_path TEXT', 'ALTER TABLE jobs ADD COLUMN repo_commit TEXT']) {
+    for (const sql of ['ALTER TABLE jobs ADD COLUMN repo_url TEXT', 'ALTER TABLE jobs ADD COLUMN repo_path TEXT', 'ALTER TABLE jobs ADD COLUMN repo_commit TEXT', 'ALTER TABLE jobs ADD COLUMN ownership_token TEXT', 'ALTER TABLE jobs ADD COLUMN verification_method TEXT', 'ALTER TABLE jobs ADD COLUMN verified_at TEXT']) {
       try { this.db.exec(sql); } catch { /* column already exists */ }
     }
   }
@@ -182,7 +188,10 @@ function rowToJob(row: Row): Job {
     orderId: row.order_id ? str(row.order_id) : undefined,
     repoUrl: row.repo_url ? str(row.repo_url) : undefined,
     repoPath: row.repo_path ? str(row.repo_path) : undefined,
-    repoCommit: row.repo_commit ? str(row.repo_commit) : undefined
+    repoCommit: row.repo_commit ? str(row.repo_commit) : undefined,
+    ownershipToken: row.ownership_token ? str(row.ownership_token) : undefined,
+    verificationMethod: row.verification_method === 'demo' || row.verification_method === 'http' || row.verification_method === 'dns' ? row.verification_method : undefined,
+    verifiedAt: row.verified_at ? str(row.verified_at) : undefined
   };
 }
 function rowToScanRun(row: Row): ScanRun {

@@ -19,6 +19,9 @@ test('SQLite persistence recovers jobs across orchestrator instances', async () 
   assert.equal(recovered?.verified, true);
   assert.equal(recovered?.scopeLocked, true);
   assert.equal(recovered?.targetUrl, 'https://demo-owned-site.local/');
+  assert.equal(recovered?.verificationMethod, 'demo');
+  assert.match(recovered?.verifiedAt || '', /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(recovered?.ownershipToken, `clawvapt-verify-${job.id}`);
 });
 
 test('scan runs persist and refresh report bundle', async () => {

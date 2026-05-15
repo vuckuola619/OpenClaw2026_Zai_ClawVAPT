@@ -5,6 +5,7 @@ import { AuditLogger } from '../core/AuditLogger.js';
 import { QuotaStore } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
 import { CleanupService, type CleanupResult } from '../core/CleanupService.js';
+import { OwnershipVerifier } from '../core/OwnershipVerifier.js';
 import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
@@ -25,6 +26,7 @@ export class MainOrchestrator {
   payments = new PakasirAdapter();
   securityTools = new SecurityToolAdapters(this.audit);
   activeWebScanner = new ActiveWebScanner(this.audit);
+  ownershipVerifier = new OwnershipVerifier();
   repoConnector = new GitHubRepoConnector();
   reportsByJob = new Map<string, { json: string; pdf: string }>();
   correlationsByJob = new Map<string, Correlation[]>();
@@ -63,19 +65,37 @@ export class MainOrchestrator {
   async createChallenge(job: Job): Promise<AgentResult> {
     const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'challenge', { job });
     const result = envelope.result;
+    job.ownershipToken = job.ownershipToken || this.ownershipVerifier.challengeToken(job);
     job.state = 'GENERATE_OWNERSHIP_CHALLENGE';
     this.store.saveJob(job);
-    return result;
+    await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'RECEIVE_REQUEST', 'GENERATE_OWNERSHIP_CHALLENGE', 'ownership_challenge_created', 'OwnershipVerifier', 'DONE', { targetHost: new URL(job.targetUrl).hostname }, { methods: ['http', 'dns'], token_created: true });
+    return { ...result, evidence: [{ type: 'challenge', summary: this.ownershipVerifier.instructions(job), redacted: true }] };
   }
 
-  async verifyDemo(jobId: string): Promise<AgentResult> {
-    const job = this.mustJob(jobId);
-    const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'verify_demo', { job });
-    const result = envelope.result;
-    job.state = result.next_state;
-    this.store.saveJob(job);
-    return result;
+  challengeInstructions(jobId: string): string {
+    return this.ownershipVerifier.instructions(this.mustJob(jobId));
   }
+
+  async verifyOwnership(jobId: string): Promise<AgentResult> {
+    const job = this.mustJob(jobId);
+    job.ownershipToken = job.ownershipToken || this.ownershipVerifier.challengeToken(job);
+    const result = await this.ownershipVerifier.verify(job);
+    if (result.ok) {
+      job.verified = true;
+      job.scopeHost = new URL(job.targetUrl).hostname.toLowerCase();
+      job.scopeLocked = true;
+      job.verificationMethod = result.method;
+      job.verifiedAt = new Date().toISOString();
+      job.state = 'LOCK_SCOPE';
+    } else {
+      job.state = 'VERIFY_OWNERSHIP';
+    }
+    this.store.saveJob(job);
+    await this.audit.transition(job.id, job.userIdHash, 'TrustVerifierPaymentAgent', 'VERIFY_OWNERSHIP', job.state, result.ok ? 'ownership_verification_passed' : 'ownership_verification_failed', 'OwnershipVerifier', result.ok ? 'DONE' : 'ERROR', { targetHost: new URL(job.targetUrl).hostname }, { method: result.method || 'none', evidence: result.evidence });
+    return { agent: 'TrustVerifierPaymentAgent', job_id: job.id, status: result.ok ? 'DONE' : 'ERROR', decision: result.ok ? 'OWNERSHIP_VERIFIED_SCOPE_LOCKED' : 'OWNERSHIP_VERIFICATION_FAILED', evidence: [{ type: 'scope', summary: result.ok ? `method=${result.method}; scope=${job.scopeHost}` : result.evidence, redacted: true }], findings: [], next_state: job.state, redaction_applied: true, notes: [result.ok ? 'Ownership proof validated.' : 'HTTP/DNS proof not found or token mismatch.'] };
+  }
+
+  async verifyDemo(jobId: string): Promise<AgentResult> { return this.verifyOwnership(jobId); }
 
   async runApprovedScan(jobId: string): Promise<{ job: Job; reports: { json: string; pdf: string }; correlations: Correlation[]; tools: ToolStatus[] }> {
     const job = this.mustJob(jobId);
