@@ -208,7 +208,9 @@ function rowToJob(row: Row): Job {
     repoCommit: row.repo_commit ? str(row.repo_commit) : undefined,
     ownershipToken: row.ownership_token ? str(row.ownership_token) : undefined,
     verificationMethod: row.verification_method === 'demo' || row.verification_method === 'http' || row.verification_method === 'dns' ? row.verification_method : undefined,
-    verifiedAt: row.verified_at ? str(row.verified_at) : undefined
+    verifiedAt: row.verified_at ? str(row.verified_at) : undefined,
+    createdAt: row.created_at ? str(row.created_at) : undefined,
+    updatedAt: row.updated_at ? str(row.updated_at) : undefined
   };
 }
 function rowToScanRun(row: Row): ScanRun {

@@ -191,7 +191,14 @@ export class TelegramBot {
   private async myJobs(chatId: string | number, userId: string): Promise<void> {
     const jobs = this.orchestrator.listJobsForUser(userId, 10);
     if (jobs.length === 0) return this.sendMessage(chatId, 'No persisted jobs yet. Create one with /scan <url>.', mainButtons());
-    const lines = jobs.map((job) => `• ${job.id} — ${job.state} — ${job.scopeHost || new URL(job.targetUrl).hostname} — repo ${job.repoUrl ? 'yes' : 'no'} — findings ${job.findings.length}`);
+    const lines = jobs.map((job) => {
+      const runs = this.orchestrator.scanRuns(job.id);
+      const latestRun = runs[0];
+      const hasReport = Boolean(this.orchestrator.reportForJob(job.id));
+      const started = job.createdAt || '-';
+      const ended = hasReport || latestRun ? (latestRun?.createdAt || job.updatedAt || '-') : '-';
+      return `• ${job.id} — ${job.state}\n  target: ${job.scopeHost || new URL(job.targetUrl).hostname}\n  started: ${started}\n  ended/report: ${ended}${hasReport ? ' ✅' : ' -'}\n  scans: ${runs.length} — repo ${job.repoUrl ? 'yes' : 'no'} — findings ${job.findings.length}`;
+    });
     return this.sendMessage(chatId, `Your jobs:\n${lines.join('\n')}`, mainButtons());
   }
 
@@ -235,6 +242,7 @@ export class TelegramBot {
   private async pay(chatId: string | number, userId: string): Promise<void> {
     const tx = await this.orchestrator.createPaymentForUser(userId);
     await this.sendMessage(chatId, paymentInstructionMessage(tx), paymentButtons(tx.orderId, tx.paymentUrl));
+    await this.sendPhoto(chatId, paymentQrUrl(tx.paymentUrl), 'Payment QR code. If this opens a Pakasir page instead of direct QRIS, tap Complete Payment QRIS to view/pay the official QRIS.');
   }
 
   private async health(chatId: string | number): Promise<void> {
@@ -310,7 +318,7 @@ export class TelegramBot {
     const text = paid
       ? paymentPaidMessage(orderId, result, q.credits)
       : paymentPendingMessage(orderId, result, q.credits);
-    await this.sendMessage(chatId, text, paid ? mainButtons() : { inline_keyboard: [[{ text: '✅ Saya Sudah Bayar / Cek Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
+    await this.sendMessage(chatId, text, paid ? mainButtons() : { inline_keyboard: [[{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
   private async simulatePayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
@@ -371,6 +379,10 @@ export class TelegramBot {
     await this.rawApi('sendDocument', form);
   }
 
+  private async sendPhoto(chatId: string | number, photo: string, caption: string): Promise<void> {
+    await this.api('sendPhoto', { chat_id: chatId, photo, caption });
+  }
+
   private async answerCallback(callbackQueryId: string): Promise<void> { await this.api('answerCallbackQuery', { callback_query_id: callbackQueryId }); }
 
   private async api<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
@@ -404,14 +416,15 @@ function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
-function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Selesaikan Pembayaran QRIS', url: paymentUrl }], [{ text: '✅ Saya Sudah Bayar / Cek Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Complete QRIS Payment', url: paymentUrl }], [{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function paymentInstructionMessage(tx: { orderId: string; amount: number; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string; mode: string }): string {
   const adminFee = tx.adminFee ?? Math.max(0, (tx.totalPayment || tx.amount) - tx.amount);
   const totalPayment = tx.totalPayment || tx.amount + adminFee;
-  return `Pembayaran QRIS dibuat\n\nOrder Id: ${tx.orderId}\nNominal: ${rupiah(tx.amount)}\nMetode: ${(tx.method || 'qris').toUpperCase()}\nBiaya Admin: ${rupiah(adminFee)}\nTotal Bayar: ${rupiah(totalPayment)}\nStatus: Menunggu pembayaran\n${tx.expiredAt ? `Expired: ${tx.expiredAt}\n` : ''}\nKlik “Selesaikan Pembayaran QRIS”, bayar di Pakasir, lalu tap “Saya Sudah Bayar / Cek Status”.\n\nCredits setelah sukses: +10`;
+  return `QRIS payment created\n\nOrder ID: ${tx.orderId}\nAmount: ${rupiah(tx.amount)}\nMethod: ${(tx.method || 'qris').toUpperCase()}\nAdmin Fee: ${rupiah(adminFee)}\nTotal Payment: ${rupiah(totalPayment)}\nStatus: Waiting for payment\n${tx.expiredAt ? `Expires At: ${tx.expiredAt}\n` : ''}\nTap “Complete QRIS Payment”, pay on Pakasir, then tap “I Have Paid / Check Status”.\n\nCredits after success: +10`;
 }
-function paymentPendingMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }, credits: number): string { return `Pembayaran belum selesai\n\nOrder Id: ${orderId}\nStatus: ${result.status}\nMetode: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Biaya Admin: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Bayar: ${rupiah(result.totalPayment)}\n` : ''}Credits sekarang: ${credits}\n\nKalau sudah bayar, tap lagi “Saya Sudah Bayar / Cek Status”.`; }
-function paymentPaidMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string; creditsAdded: number; alreadyCredited: boolean }, credits: number): string { return `✅ Pembayaran berhasil\n\nOrder Id: ${orderId}\nStatus: ${result.status}\nMetode: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Biaya Admin: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Bayar: ${rupiah(result.totalPayment)}\n` : ''}${result.completedAt ? `Dibayar Pada: ${result.completedAt}\n` : ''}Credits ditambah: +${result.creditsAdded}${result.alreadyCredited ? ' (sudah pernah dikreditkan)' : ''}\nCredits sekarang: ${credits}`; }
+function paymentPendingMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string }, credits: number): string { return `Payment not completed yet\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nMethod: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Admin Fee: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Payment: ${rupiah(result.totalPayment)}\n` : ''}Current credits: ${credits}\n\nIf you already paid, tap “I Have Paid / Check Status” again.`; }
+function paymentPaidMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string; creditsAdded: number; alreadyCredited: boolean }, credits: number): string { return `✅ Payment completed\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nMethod: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Admin Fee: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Payment: ${rupiah(result.totalPayment)}\n` : ''}${result.completedAt ? `Paid At: ${result.completedAt}\n` : ''}Credits added: +${result.creditsAdded}${result.alreadyCredited ? ' (already credited before)' : ''}\nCurrent credits: ${credits}`; }
+function paymentQrUrl(paymentUrl: string): string { return `https://api.qrserver.com/v1/create-qr-code/?size=640x640&data=${encodeURIComponent(paymentUrl)}`; }
 function rupiah(value: number): string { return `Rp ${Math.round(value).toLocaleString('id-ID')}`; }
 function splitTelegramText(text: string): string[] { const max = 3900; if (text.length <= max) return [text]; const chunks: string[] = []; let rest = text; while (rest.length > max) { const cut = rest.lastIndexOf('\n', max); const idx = cut > 1000 ? cut : max; chunks.push(rest.slice(0, idx)); rest = rest.slice(idx).trimStart(); } if (rest) chunks.push(rest); return chunks; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

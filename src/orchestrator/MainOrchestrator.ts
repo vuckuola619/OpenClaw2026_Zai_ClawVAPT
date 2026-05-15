@@ -268,6 +268,8 @@ export class MainOrchestrator {
 
   scanRuns(jobId: string): ScanRun[] { return this.scanRunsByJob.get(jobId) || []; }
 
+  reportForJob(jobId: string): { json: string; pdf: string } | undefined { return this.reportsByJob.get(jobId); }
+
   async exportBundle(jobId: string): Promise<{ reports: { json: string; pdf: string }; audit: string; manualReview: { markdown: string } }> {
     const reports = await this.refreshReport(jobId, []);
     const manualReview = await this.manualReview(jobId);
