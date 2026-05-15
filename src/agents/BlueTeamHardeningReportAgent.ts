@@ -1,0 +1,7 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import type { AgentResult, Finding, Job } from '../types/index.js';
+export class BlueTeamHardeningReportAgent {
+  plan(job: Job): AgentResult { return {agent:'BlueTeamHardeningReportAgent',job_id:job.id,status:'DONE',decision:'REMEDIATION_PLAN_CREATED_APPROVAL_REQUIRED',evidence:[{type:'plan',path:`patches/${job.id}_remediation.patch`,summary:'Patch plan generated; approval required before applying.',redacted:true}],findings:job.findings.map(f=>({...f,status:'PLANNED'})),next_state:'APPROVAL_GATE',redaction_applied:true,notes:['No remediation applied. No PR auto-merge.']}; }
+  hardening(job: Job): AgentResult { return {agent:'BlueTeamHardeningReportAgent',job_id:job.id,status:'DONE',decision:'PLAN_ONLY_HARDENING',evidence:[{type:'hardening',summary:'Web, repo, Docker, SSH, firewall, CI, SBOM recommendations generated.',redacted:true}],findings:[],next_state:'OFFER_REMEDIATION',redaction_applied:true,notes:['PLAN_ONLY; lockout-risk changes not applied.']}; }
+  async patch(job: Job): Promise<string> { await mkdir('patches',{recursive:true}); const path=`patches/${job.id}_remediation.patch`; await writeFile(path, `MOCK_PR PATCH for ${job.id}\n\n- Add security headers middleware\n- Add SECURITY.md\n- Add Dependabot config\n- Add Docker HEALTHCHECK/USER\n\nApproval required before applying. Retest required before FIXED.\n`); return path; }
+}

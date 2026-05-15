@@ -1,0 +1,2 @@
+import type { Finding } from '../types/index.js';
+export class FindingNormalizer { normalize(findings: Finding[]): Finding[] { const seen=new Set<string>(); return findings.filter(f=>{ const k=f.id+f.title; if(seen.has(k)) return false; seen.add(k); return true; }).sort((a,b)=>this.rank(b.severity)-this.rank(a.severity)); } private rank(s: Finding['severity']){ return {INFO:0,LOW:1,MEDIUM:2,HIGH:3,CRITICAL:4}[s]; } }

@@ -1,0 +1,2 @@
+export const TELEGRAM_COMMANDS = ['/start','/help','/scan <url>','/verify <job_id>','/connect_repo <owner/repo>','/status <job_id>','/report <job_id>','/create_pr <job_id>','/ssh_plan <job_id>','/approve <plan_id>','/harden <job_id>','/pay','/check_payment <order_id>','/simulate_payment <order_id>','/demo'];
+export function helpText(){ return `ClawVAPT commands:\n${TELEGRAM_COMMANDS.join('\n')}\n\nSafety gates: no verification = no scan; no scope lock = no scanner; no approval = no remediation.`; }

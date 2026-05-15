@@ -1,0 +1,24 @@
+{
+  "name": "clawthon",
+  "version": "0.1.0",
+  "description": "ClawVAPT consent-gated Telegram-first VAPT demo orchestrated by OpenClaw",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "build": "tsc",
+    "demo": "tsx src/demo.ts",
+    "report:sample": "tsx src/demo.ts --report-only",
+    "scan:demo": "tsx src/demo.ts --scan-only",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["vapt", "telegram", "security", "openclaw", "pakasir"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3"
+  }
+}

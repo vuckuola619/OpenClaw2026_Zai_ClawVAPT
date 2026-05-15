@@ -1,0 +1,3 @@
+import type { Finding } from '../types/index.js';
+export interface Correlation { runtimeFindingId: string; repoFindingId: string; confidence: number; reason: string; }
+export class Correlator { correlate(findings: Finding[]): Correlation[] { const runtime=findings.filter(f=>f.source==='BUILTIN_URL'); const repo=findings.filter(f=>f.source==='BUILTIN_REPO'); const out:Correlation[]=[]; for(const r of runtime) for(const c of repo){ if(r.title.toLowerCase().includes('header') && /helmet|cors|docker/i.test(c.title)) out.push({runtimeFindingId:r.id, repoFindingId:c.id, confidence:0.65, reason:'Runtime header weakness relates to app/server hardening evidence.'}); } return out; } }

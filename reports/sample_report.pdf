@@ -1,0 +1,36 @@
+%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj
+4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+5 0 obj << /Length 1293 >> stream
+BT /F1 12 Tf 50 760 Td (ClawVAPT Sample Report) Tj ET
+BT /F1 12 Tf 50 738 Td (Executive Summary) Tj ET
+BT /F1 12 Tf 50 716 Td (Authorization and Scope) Tj ET
+BT /F1 12 Tf 50 694 Td (Methodology) Tj ET
+BT /F1 12 Tf 50 672 Td (Tools Used) Tj ET
+BT /F1 12 Tf 50 650 Td (Findings Summary) Tj ET
+BT /F1 12 Tf 50 628 Td (HIGH: Runtime .env exists in workspace) Tj ET
+BT /F1 12 Tf 50 606 Td (HIGH: Secret-like pattern redacted) Tj ET
+BT /F1 12 Tf 50 584 Td (HIGH: Potential unsafe GitHub Actions trigger) Tj ET
+BT /F1 12 Tf 50 562 Td (MEDIUM: Missing Content-Security-Policy) Tj ET
+BT /F1 12 Tf 50 540 Td (MEDIUM: Dockerfile may run as root) Tj ET
+BT /F1 12 Tf 50 518 Td (LOW: Server header disclosure) Tj ET
+BT /F1 12 Tf 50 496 Td (LOW: Missing Dependabot config) Tj ET
+BT /F1 12 Tf 50 474 Td (LOW: Dockerfile missing HEALTHCHECK) Tj ET
+BT /F1 12 Tf 50 452 Td (INFO: Exposed .env check performed) Tj ET
+BT /F1 12 Tf 50 430 Td (Runtime-to-Code Correlation) Tj ET
+BT /F1 12 Tf 50 408 Td (Remediation Plan) Tj ET
+BT /F1 12 Tf 50 386 Td (Retest Results: no finding marked FIXED without retest) Tj ET
+BT /F1 12 Tf 50 364 Td (Hardening Recommendations) Tj ET
+BT /F1 12 Tf 50 342 Td (Compliance Guardrails) Tj ET
+BT /F1 12 Tf 50 320 Td (Limitations) Tj ET
+BT /F1 12 Tf 50 298 Td (Audit Trail Summary) Tj ET
+endstream endobj
+xref
+0 6
+0000000000 65535 f 
+trailer << /Root 1 0 R /Size 6 >>
+startxref
+0
+%%EOF

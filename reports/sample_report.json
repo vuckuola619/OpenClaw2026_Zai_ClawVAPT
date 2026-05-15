@@ -1,0 +1,315 @@
+{
+  "job_id": "JOB-439efb81",
+  "generated_at": "2026-05-15T08:55:37.160Z",
+  "authorization_and_scope": {
+    "verified": true,
+    "scope_locked": true,
+    "scope_host": "demo-owned-site.local"
+  },
+  "methodology": [
+    "pre-engagement",
+    "ownership verification",
+    "scope lock",
+    "safe URL scanner",
+    "safe repo scanner",
+    "normalization",
+    "correlation",
+    "redaction",
+    "reporting"
+  ],
+  "tools_used": [
+    {
+      "name": "SafeUrlScanner",
+      "mode": "BUILTIN",
+      "status": "DONE"
+    },
+    {
+      "name": "RepoScanner",
+      "mode": "BUILTIN",
+      "status": "DONE"
+    },
+    {
+      "name": "zap-baseline.py",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "nuclei",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "testssl.sh",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "semgrep",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "gitleaks",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "trivy",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "osv-scanner",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "checkov",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "syft",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "grype",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "lynis",
+      "available": false,
+      "status": "INCOMPLETE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    },
+    {
+      "name": "oscap",
+      "available": false,
+      "status": "FUTURE",
+      "mode": "not_installed",
+      "notes": [
+        "Unavailable; demo continues with built-in scanner."
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "REPO-ENV-COMMITTED",
+      "title": "Runtime .env exists in workspace",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "description": ".env present locally; ensure not committed and never exposed.",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".env",
+          "summary": ".env present locally; ensure not committed and never exposed.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-SECRET-LIKE",
+      "title": "Secret-like pattern redacted",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "description": "Potential secret-like value detected: GITHUB_[REDACTED]\nGITHUB_OWNER=vuckuola619\nGITHUB_REPO=clawthon\n\nPAYMENT_PROVIDE",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".env",
+          "summary": "Potential secret-like value detected: GITHUB_[REDACTED]\nGITHUB_OWNER=vuckuola619\nGITHUB_REPO=clawthon\n\nPAYMENT_PROVIDE",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-GHA-UNSAFE",
+      "title": "Potential unsafe GitHub Actions trigger",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "description": "pull_request_target requires careful permission scoping.",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/tools/RepoScanner.ts",
+          "summary": "pull_request_target requires careful permission scoping.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "URL-CSP-MISSING",
+      "title": "Missing Content-Security-Policy",
+      "severity": "MEDIUM",
+      "status": "OPEN",
+      "description": "Demo fixture indicates CSP header is absent.",
+      "remediation": "Add secure defaults and verify with retest before marking fixed.",
+      "source": "BUILTIN_URL",
+      "evidence": [
+        {
+          "type": "url",
+          "url": "https://demo-owned-site.local",
+          "summary": "Demo fixture indicates CSP header is absent.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-DOCKER-ROOT",
+      "title": "Dockerfile may run as root",
+      "severity": "MEDIUM",
+      "status": "OPEN",
+      "description": "Dockerfile has no USER directive.",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "Dockerfile",
+          "summary": "Dockerfile has no USER directive.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "URL-SERVER-DISCLOSURE",
+      "title": "Server header disclosure",
+      "severity": "LOW",
+      "status": "OPEN",
+      "description": "Demo fixture indicates server header exists; value redacted.",
+      "remediation": "Add secure defaults and verify with retest before marking fixed.",
+      "source": "BUILTIN_URL",
+      "evidence": [
+        {
+          "type": "url",
+          "url": "https://demo-owned-site.local",
+          "summary": "Demo fixture indicates server header exists; value redacted.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-DEPENDABOT-MISSING",
+      "title": "Missing Dependabot config",
+      "severity": "LOW",
+      "status": "OPEN",
+      "description": "Dependency update automation absent.",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".github/dependabot.yml",
+          "summary": "Dependency update automation absent.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-DOCKER-HEALTHCHECK",
+      "title": "Dockerfile missing HEALTHCHECK",
+      "severity": "LOW",
+      "status": "OPEN",
+      "description": "Dockerfile has no HEALTHCHECK.",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "Dockerfile",
+          "summary": "Dockerfile has no HEALTHCHECK.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "URL-ENV-CHECK",
+      "title": "Exposed .env check performed",
+      "severity": "INFO",
+      "status": "OPEN",
+      "description": "Only status was checked; content was never fetched or dumped.",
+      "remediation": "Add secure defaults and verify with retest before marking fixed.",
+      "source": "BUILTIN_URL",
+      "evidence": [
+        {
+          "type": "url",
+          "url": "https://demo-owned-site.local",
+          "summary": "Only status was checked; content was never fetched or dumped.",
+          "redacted": true
+        }
+      ]
+    }
+  ],
+  "correlations": [
+    {
+      "runtimeFindingId": "URL-SERVER-DISCLOSURE",
+      "repoFindingId": "REPO-DOCKER-ROOT",
+      "confidence": 0.65,
+      "reason": "Runtime header weakness relates to app/server hardening evidence."
+    },
+    {
+      "runtimeFindingId": "URL-SERVER-DISCLOSURE",
+      "repoFindingId": "REPO-DOCKER-HEALTHCHECK",
+      "confidence": 0.65,
+      "reason": "Runtime header weakness relates to app/server hardening evidence."
+    }
+  ],
+  "limitations": [
+    "Demo uses safe deterministic target for .local domains.",
+    "External adapters are availability-checked and not executed unless installed and scope gates pass.",
+    "Payment may be MOCK in DEMO_MODE."
+  ],
+  "redaction_applied": true
+}

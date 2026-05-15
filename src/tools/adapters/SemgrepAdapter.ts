@@ -1,0 +1,2 @@
+import type { ToolStatus } from '../../types/index.js';
+export class SemgrepAdapter { name = 'Semgrep'; async isAvailable(): Promise<boolean> { return false; } async run(): Promise<ToolStatus> { return { name: this.name, available: false, status: 'INCOMPLETE', mode: 'safe-wrapper-placeholder', notes: ['Adapter documented and wrapped; real execution deferred until tool is installed and scope is verified.'] }; } }
