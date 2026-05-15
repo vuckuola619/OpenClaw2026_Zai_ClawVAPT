@@ -15,7 +15,7 @@ import { manualReviewChecklist, writeManualReview } from '../report/ManualReview
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult, type RepoScanProfile } from '../tools/SecurityToolAdapters.js';
 import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
-import { GitHubRepoConnector } from '../tools/GitHubRepoConnector.js';
+import { GitHubRepoConnector, parseGitHubRepo } from '../tools/GitHubRepoConnector.js';
 import type { Correlation } from '../tools/Correlator.js';
 
 export class MainOrchestrator {
@@ -212,6 +212,11 @@ export class MainOrchestrator {
 
   async toolsStatus(userId = 'system'): Promise<ToolStatus[]> { return this.securityTools.status('tools-status', this.hashUser(userId)); }
 
+  private repoAlreadyScanned(userHash: string, repoUrl: string): boolean {
+    const normalized = repoUrl.toLowerCase();
+    return [...this.jobs.values()].some((job) => job.userIdHash === userHash && job.repoUrl?.toLowerCase() === normalized && (this.scanRunsByJob.get(job.id) || []).some((run) => run.type === 'repo'));
+  }
+
   async connectRepo(jobId: string, userId: string, repoUrl: string): Promise<Job> {
     const job = this.mustJob(jobId);
     if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
@@ -241,6 +246,35 @@ export class MainOrchestrator {
     this.recordScanRun({ id: `RUN-${randomUUID().slice(0, 8)}`, jobId: job.id, type: 'repo', profile, tools: result.tools, findings: result.findings, approval: 'repo_connected_by_user', createdAt: new Date().toISOString() });
     await this.refreshReport(job.id, result.tools);
     return result;
+  }
+
+  async runStandaloneRepoSecuritySuite(userId: string, repoUrl: string, profile: RepoScanProfile = 'safe'): Promise<{ job: Job; result: ToolRunResult; reports: { json: string; pdf: string } }> {
+    const parsed = parseGitHubRepo(repoUrl);
+    const normalizedRepoUrl = parsed.htmlUrl;
+    const userHash = this.hashUser(userId);
+    const quota = this.quota.ensureUser(userHash);
+    if (this.repoAlreadyScanned(userHash, normalizedRepoUrl)) throw new Error('REPO_SCAN_LIMIT_REACHED');
+    const q = this.quota.check(userHash, REPO_SCAN_COST);
+    if (!q.allowed) throw new Error('PAYMENT_REQUIRED:TOPUP');
+    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: userHash, targetUrl: normalizedRepoUrl, verified: false, scopeLocked: false, scopeHost: '', state: 'REPO_SCAN_REQUESTED', freeScanUsed: false, credits: quota.credits, findings: [], repoUrl: normalizedRepoUrl };
+    this.jobs.set(job.id, job);
+    this.store.saveJob(job);
+    const repo = this.repoConnector.connect(job.id, normalizedRepoUrl);
+    job.repoPath = repo.repoPath;
+    job.repoCommit = repo.commit;
+    this.store.saveJob(job);
+    await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', 'START', 'REPO_CONNECTED', 'repo_scan_standalone', 'GitHubRepoConnector', 'DONE', { repo: `${repo.owner}/${repo.repo}` }, { commit: repo.commit, cost: REPO_SCAN_COST });
+    const result = await new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
+    this.quota.consume(userHash, REPO_SCAN_COST);
+    job.credits = this.quota.snapshot(userHash).credits;
+    const bridge = await this.engine.bridge.publishAgentEnvelope({ agent: 'RedTeamRepoScannerAgent', task: 'scan', job_id: job.id, status: 'DONE', result: { agent: 'RedTeamRepoScannerAgent', job_id: job.id, status: 'DONE', decision: 'OPENCLAW_CODEX_GPT55_REPO_REVIEW_REQUESTED', evidence: [], findings: result.findings.slice(0, 20), next_state: 'REPO_SCAN_AI_REVIEW_REQUESTED', redaction_applied: true, notes: ['Use OpenClaw Codex GPT-5.5 for advisory public GitHub repo review.'] }, started_at: new Date().toISOString(), completed_at: new Date().toISOString(), redaction_applied: true }, `OpenClaw Codex GPT-5.5 advisory repo scan request. Public GitHub repo only. Job: ${job.id}. Repo: ${job.repoUrl}. Commit: ${job.repoCommit}. Profile: ${profile}. Existing scanner findings: ${result.findings.length}. Return concise security review notes only; no external actions; no private data exfiltration.`);
+    result.tools.push({ name: 'OpenClawCodexGPT55Review', status: bridge.status === 'sent' ? 'DONE' : 'INCOMPLETE', available: bridge.status === 'sent', mode: bridge.status === 'sent' ? `openclaw_bridge_run:${bridge.runId || 'started'}` : `openclaw_bridge_${bridge.status}`, notes: [bridge.reason || 'Advisory AI repo review requested through OpenClaw bridge.'] });
+    job.findings = mergeFindings(job.findings, result.findings);
+    job.state = `REPO_SCAN_${profile.toUpperCase()}_COMPLETE`;
+    this.store.saveJob(job);
+    this.recordScanRun({ id: `RUN-${randomUUID().slice(0, 8)}`, jobId: job.id, type: 'repo', profile, tools: result.tools, findings: result.findings, approval: 'public_github_repo_submitted_by_user', createdAt: new Date().toISOString() });
+    const reports = await this.refreshReport(job.id, result.tools);
+    return { job, result, reports };
   }
 
   activeWebToolsStatus(): ToolStatus[] { return this.activeWebScanner.status(); }

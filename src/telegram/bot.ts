@@ -48,9 +48,9 @@ export class TelegramBot {
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health' || cmd === '/summary') return this.jobSummary(chatId, userId);
       if (cmd === '/tools') return this.toolsStatus(chatId, userId);
-      if (cmd === '/connect_repo') return this.connectRepo(chatId, userId, args[0], args[1]);
-      if (cmd === '/repo_scan') return this.repoScan(chatId, userId, 'safe', args[0]);
-      if (cmd === '/repo_scan_deep') return this.repoScan(chatId, userId, 'deep', args[0]);
+      if (cmd === '/connect_repo') return this.sendMessage(chatId, 'Repo scan is standalone now. Use /repo_scan https://github.com/owner/repo');
+      if (cmd === '/repo_scan') return this.repoScan(chatId, userId, 'safe', args.join(' '));
+      if (cmd === '/repo_scan_deep') return this.repoScan(chatId, userId, 'deep', args.join(' '));
       if (cmd === '/web_scan') return this.webScanPreview(chatId, args[0], 'safe');
       if (cmd === '/web_scan_deep') return this.webScanPreview(chatId, args[0], 'deep');
       if (cmd === '/nmap_scan') return this.nmapScanPreview(chatId, args[0]);
@@ -71,17 +71,15 @@ export class TelegramBot {
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'scan_help') return this.sendMessage(chatId, 'Website scan flow:\n/scan https://app.example.com\n/verify JOB-xxxx\n/web_scan JOB-xxxx\n/web_scan_deep JOB-xxxx\n/nmap_scan JOB-xxxx\n\nDifference:\n• Run Safe Scan: basic combined safe workflow/report gate.\n• Active Web Safe: low-noise headers + safe Nuclei templates. Cost 5.\n• Active Web Deep: deeper non-destructive CVE/KEV/injection + controlled Nikto. Cost 10.\n• Strict Nmap: single-host low-rate port discovery only. Cost 5.', mainButtons());
-      if (data === 'repo_help') return this.sendMessage(chatId, 'Code/GitHub scan flow:\n1) Create/verify web target first: /scan https://your-site.com then /verify JOB-xxxx\n2) Connect public repo: /connect_repo JOB-xxxx https://github.com/owner/repo\n3) Safe code scan: /repo_scan JOB-xxxx (cost 10 credits)\n4) Deep code scan: /repo_scan_deep JOB-xxxx (cost 10 credits)\n\nDifference:\n• Repo Safe: secrets, JS/TS SAST basics, dependency/container/config heuristics + OpenClaw Codex GPT-5.5 advisory review.\n• Repo Deep: vibe-coded app profile; broader OWASP/JWT/auth/config/dev-dep checks + manual-review priorities + OpenClaw Codex GPT-5.5 advisory review.\n\nOnly public GitHub repos are accepted for now. Private repo SSO/GitHub App support is roadmap.', mainButtons());
-      if (data === 'report_help') return this.sendMessage(chatId, 'Report flow:\n/status JOB-xxxx\n/report JOB-xxxx\n/manual_review JOB-xxxx\n/export JOB-xxxx', mainButtons());
+      if (data === 'repo_help') return this.sendMessage(chatId, 'Code/GitHub scan flow:\n/repo_scan https://github.com/owner/repo\n\nRules:\n• Standalone public GitHub repo scan, not linked to web target jobs.\n• Cost: 25 credits.\n• Limit: 1 scan per public repo per account for now.\n• Private repo SSO/GitHub App support is roadmap.', mainButtons());
+      if (data === 'report_help') return this.sendMessage(chatId, 'Reports are sent automatically after active web scans. Manual fetch:\n/status JOB-xxxx\n/report JOB-xxxx', mainButtons());
       if (data === 'demo') return this.runDemo(chatId);
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
       if (data === 'health' || data === 'summary') return this.jobSummary(chatId, userId);
       if (data === 'tools') return this.toolsStatus(chatId, userId);
-      if (data.startsWith('repo_scan:')) return this.repoScan(chatId, userId, 'safe', data.slice('repo_scan:'.length));
-      if (data.startsWith('repo_scan_deep:')) return this.repoScan(chatId, userId, 'deep', data.slice('repo_scan_deep:'.length));
-      if (data === 'repo_scan') return this.sendMessage(chatId, 'Usage: /repo_scan <job_id>', mainButtons());
-      if (data === 'repo_scan_deep') return this.sendMessage(chatId, 'Usage: /repo_scan_deep <job_id>', mainButtons());
+      if (data === 'repo_scan') return this.sendMessage(chatId, 'Usage: /repo_scan https://github.com/owner/repo', mainButtons());
+      if (data === 'repo_scan_deep') return this.sendMessage(chatId, 'Usage: /repo_scan_deep https://github.com/owner/repo', mainButtons());
       if (data.startsWith('verify:')) return this.verify(chatId, data.slice('verify:'.length));
       if (data.startsWith('challenge:')) return this.challenge(chatId, data.slice('challenge:'.length));
       if (data.startsWith('renew:')) return this.renewScope(chatId, userId, data.slice('renew:'.length));
@@ -125,7 +123,7 @@ export class TelegramBot {
 
   private async sendMainMenu(chatId: string | number): Promise<void> {
     const q = this.orchestrator.quotaSnapshotForUser(String(chatId));
-    return this.sendMessage(chatId, `🔒 ClawVAPT\nTelegram-first VAPT assistant for authorized website + GitHub code security checks. It verifies ownership first, locks scope, runs safe/deep scans, then generates PDF/JSON reports with remediation guidance.\n\nCredits: ${q.credits}\n• New users start with 10 credits (enough for 1 GitHub repo scan)\n• Web safe scan costs 5 credits\n• Web deep scan costs 10 credits\n• GitHub repo scan costs 10 credits\n• Top up with /pay (+10 credits after payment complete)\n\nBasic flow:\n1) /scan <url>\n2) /verify <job_id> once per URL\n3) /connect_repo <job_id> https://github.com/owner/repo\n4) choose scan type\n5) /report or /export\n\nScan types:\n• Run Safe Scan — basic combined safe workflow/report gate.\n• Active Web Safe — low-noise website checks: headers + safe Nuclei templates.\n• Active Web Deep — deeper website checks: CVE/KEV/injection templates + controlled Nikto, non-destructive.\n• Repo Safe — public GitHub code checks: secrets/SAST/dependencies/config basics + OpenClaw Codex GPT-5.5 advisory review.\n• Repo Deep — public GitHub deeper code review profile for AI/vibe-coded apps: auth, JWT, OWASP, Docker/IaC, dependency/dev-dep checks + OpenClaw Codex GPT-5.5 advisory review.\n• Hardening Plan — remediation recommendations only; no changes applied.\n\nVerified URL limit: 5 scan runs per scope.`, mainButtons());
+    return this.sendMessage(chatId, `🔒 ClawVAPT\nTelegram-first VAPT assistant for authorized website checks + standalone public GitHub repo scans. Web targets require ownership verification; GitHub repo scans are separate and only accept public repos.\n\nCredits: ${q.credits}\n• Web safe scan costs 5 credits\n• Web deep scan costs 10 credits\n• Public GitHub repo scan costs 25 credits\n• Top up with /pay (+10 credits after payment complete)\n\nWeb flow:\n1) /scan <url>\n2) /verify <job_id> once per URL\n3) /web_scan <job_id> or /web_scan_deep <job_id>\n4) reports are sent automatically after active web scan\n\nGitHub flow:\n/repo_scan https://github.com/owner/repo\nLimit: 1 scan per repo per account for now.\n\nVerified URL limit: 5 scan runs per scope.`, mainButtons());
   }
 
   private async runDemo(chatId: string | number): Promise<void> {
@@ -139,7 +137,7 @@ export class TelegramBot {
   private async createScan(chatId: string | number, userId: string, rawUrl: string): Promise<void> {
     if (!rawUrl) return this.sendMessage(chatId, 'Usage: /scan https://example.com', mainButtons());
     const job = await this.orchestrator.createScan(userId, rawUrl);
-    if (job.verified) return this.sendMessage(chatId, `Scan job created: ${job.id}\n\n✅ URL already verified for your account. Scope reused: ${job.scopeHost}\nNo need to verify again. Limit: 5 scan runs per verified URL.\nCredits: ${job.credits}\n\nNext: /web_scan ${job.id} or /connect_repo ${job.id} https://github.com/owner/repo`, runButtons(job.id));
+    if (job.verified) return this.sendMessage(chatId, `Scan job created: ${job.id}\n\n✅ URL already verified for your account. Scope reused: ${job.scopeHost}\nNo need to verify again. Limit: 5 scan runs per verified URL.\nCredits: ${job.credits}\n\nNext: /web_scan ${job.id} or /web_scan_deep ${job.id}`, runButtons(job.id));
     const challenge = await this.orchestrator.createChallenge(job);
     const token = challenge.evidence[0]?.summary || 'challenge generated';
     await this.sendMessage(chatId, `Scan job created: ${job.id}\nCredits: ${job.credits}\n\nOwnership challenge:\n${token}\n\nScanner is blocked until verification and scope lock. After verified once, future jobs for same URL reuse verification.`, verifyButtons(job.id));
@@ -193,8 +191,9 @@ export class TelegramBot {
     const lastWeb = runs.find((r) => r.type === 'web');
     const sev = severitySummary(job.findings);
     const q = userId ? this.orchestrator.quotaSnapshotForUser(userId) : { credits: job.credits };
-    const usage = this.orchestrator.scopeScanUsage(job.id);
-    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nCredits: ${q.credits}\nScan usage for URL: ${usage.used}/${usage.limit}\nWeb target: ${job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
+    const isRepoOnly = Boolean(job.repoUrl) && !job.scopeHost && job.targetUrl.startsWith('https://github.com/');
+    const usageLine = isRepoOnly ? 'Repo scan usage: 1/1 max per repo/account' : `Scan usage for URL: ${this.orchestrator.scopeScanUsage(job.id).used}/${this.orchestrator.scopeScanUsage(job.id).limit}`;
+    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nCredits: ${q.credits}\n${usageLine}\nWeb target: ${isRepoOnly ? '-' : job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
   }
 
   private async myJobs(chatId: string | number, userId: string): Promise<void> {
@@ -206,7 +205,8 @@ export class TelegramBot {
       const hasReport = Boolean(this.orchestrator.reportForJob(job.id));
       const started = job.createdAt || '-';
       const ended = hasReport || latestRun ? (latestRun?.createdAt || job.updatedAt || '-') : '-';
-      return `• ${job.id} — ${job.state}\n  target: ${job.scopeHost || new URL(job.targetUrl).hostname}\n  started: ${started}\n  ended/report: ${ended}${hasReport ? ' ✅' : ' -'}\n  scans: ${runs.length} — repo ${job.repoUrl ? 'yes' : 'no'} — findings ${job.findings.length}`;
+      const target = job.repoUrl || job.scopeHost || new URL(job.targetUrl).hostname;
+      return `• ${job.id} — ${job.state}\n  target: ${target}\n  started: ${started}\n  ended/report: ${ended}${hasReport ? ' ✅' : ' -'}\n  scans: ${runs.length} — repo ${job.repoUrl ? 'yes' : 'no'} — findings ${job.findings.length}`;
     });
     return this.sendMessage(chatId, `Your jobs:\n${lines.join('\n')}`, mainButtons());
   }
@@ -284,22 +284,21 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Security tools status:\n${lines.join('\n')}\n\nRecommended repo skills: secrets scan, JS/TS SAST, dependency/container scan, safe web headers.`, toolsButtons());
   }
 
-  private async connectRepo(chatId: string | number, userId: string, jobId?: string, repoUrl?: string): Promise<void> {
-    if (!jobId || !repoUrl) return this.sendMessage(chatId, 'Usage: /connect_repo <job_id> https://github.com/owner/repo', mainButtons());
-    await this.sendMessage(chatId, `Connecting GitHub repo to ${jobId}...`);
-    const job = await this.orchestrator.connectRepo(jobId, userId, repoUrl);
-    await this.sendMessage(chatId, `✅ Public GitHub repo connected\nJob: ${job.id}\nWeb target: ${job.targetUrl}\nRepo: ${job.repoUrl}\nCommit: ${job.repoCommit || '-'}\n\nPrivate repo SSO/GitHub App support is on the roadmap.\n\nNow run /repo_scan ${job.id} or /repo_scan_deep ${job.id}. Each GitHub repo scan costs 10 credits. New users get 10 credits, enough for 1 repo scan.`, repoButtons(job.id));
+  private async connectRepo(chatId: string | number, _userId: string, _jobId?: string, repoUrl?: string): Promise<void> {
+    const example = repoUrl && repoUrl.startsWith('https://github.com/') ? repoUrl : 'https://github.com/owner/repo';
+    await this.sendMessage(chatId, `Legacy /connect_repo is deprecated. Repo scans are standalone now and not linked to web target jobs.\n\nUse: /repo_scan ${example}\nCost: 25 credits. Limit: 1 scan per repo per account.`, mainButtons());
   }
 
-  private async repoScan(chatId: string | number, userId: string, profile: 'safe' | 'deep' = 'safe', jobId?: string): Promise<void> {
-    if (!jobId) return this.sendMessage(chatId, `Usage: /repo_scan${profile === 'deep' ? '_deep' : ''} <job_id>`, mainButtons());
-    if (!(await this.checkScanLimit(chatId, jobId))) return;
-    await this.sendMessage(chatId, `Running ${profile} repo security suite for ${jobId}...`);
-    const result = await this.orchestrator.runRepoSecuritySuite(userId, profile, jobId);
+  private async repoScan(chatId: string | number, userId: string, profile: 'safe' | 'deep' = 'safe', repoUrl?: string): Promise<void> {
+    if (!repoUrl) return this.sendMessage(chatId, `Usage: /repo_scan${profile === 'deep' ? '_deep' : ''} https://github.com/owner/repo`, mainButtons());
+    await this.sendMessage(chatId, `Running standalone public GitHub ${profile} scan...\nRepo: ${repoUrl}\nCost: 25 credits\nLimit: 1 scan per repo per account.`);
+    const { job, result, reports } = await this.orchestrator.runStandaloneRepoSecuritySuite(userId, repoUrl, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
     const q = this.orchestrator.quotaSnapshotForUser(userId);
     const ai = result.tools.find((t) => t.name === 'OpenClawCodexGPT55Review');
-    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${jobId}\nProfile: ${result.profile.toUpperCase()}\nCost: 10 credits\nCredits left: ${q.credits}\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, repoButtons(jobId));
+    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${job.id}\nRepo: ${job.repoUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: 25 credits\nCredits left: ${q.credits}\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, reportButtons(job.id));
+    await this.sendDocument(chatId, reports.pdf, 'Repo PDF report');
+    await this.sendDocument(chatId, reports.json, 'Repo JSON report');
   }
 
   private async checkScanLimit(chatId: string | number, jobId: string): Promise<boolean> {
@@ -351,7 +350,12 @@ export class TelegramBot {
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
     const q = this.orchestrator.quotaSnapshotForUser(userId);
-    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: ${profile === 'deep' ? 10 : 5} credits\nCredits left: ${q.credits}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
+    await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCost: ${profile === 'deep' ? 10 : 5} credits\nCredits left: ${q.credits}\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nSending PDF, JSON, and manual review report now.`, reportButtons(jobId));
+    const reports = await this.orchestrator.refreshReport(jobId, result.tools);
+    const manual = await this.orchestrator.manualReview(jobId);
+    await this.sendDocument(chatId, reports.pdf, 'Active web PDF report');
+    await this.sendDocument(chatId, reports.json, 'Active web JSON report');
+    await this.sendDocument(chatId, manual.markdown, 'Manual review report');
   }
 
   private async checkPayment(chatId: string | number, userId: string, orderId?: string): Promise<void> {
@@ -389,7 +393,6 @@ export class TelegramBot {
       { command: 'scan', description: 'Create web target: /scan https://site.com' },
       { command: 'verify', description: 'Verify HTTP/DNS ownership proof' },
       { command: 'challenge', description: 'Show ownership challenge again' },
-      { command: 'connect_repo', description: 'Attach GitHub repo to job' },
       { command: 'web_scan', description: 'Approve active web safe scan' },
       { command: 'web_scan_deep', description: 'Approve enterprise deep web scan' },
       { command: 'nmap_scan', description: 'Approve strict Nmap scan' },
@@ -397,15 +400,12 @@ export class TelegramBot {
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
       { command: 'report', description: 'Send latest report files' },
-      { command: 'export', description: 'Send report bundle' },
-      { command: 'manual_review', description: 'Send manual review checklist' },
-      { command: 'harden', description: 'Show hardening plan' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
       { command: 'summary', description: 'Show previous job results summary' },
       { command: 'tools', description: 'Show security tools status' },
-      { command: 'repo_scan', description: 'Run repo safe scan: /repo_scan JOB-id' },
-      { command: 'repo_scan_deep', description: 'Run repo deep scan: /repo_scan_deep JOB-id' }
+      { command: 'repo_scan', description: 'Run public GitHub repo scan: /repo_scan https://github.com/owner/repo' },
+      { command: 'repo_scan_deep', description: 'Run deeper public GitHub repo scan' }
     ] });
   }
 
@@ -452,14 +452,14 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📊 Job Summary', callback_data: 'summary' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
-function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }, { text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 GitHub Repo Scan', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📊 Job Summary', callback_data: 'summary' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📄 Reports', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'GitHub Scan Usage', callback_data: 'repo_scan' }], [{ text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Show Challenge', callback_data: `challenge:${jobId}` }, { text: 'Verify Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Renew Verification', callback_data: `renew:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function reportButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Renew Verification', callback_data: `renew:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function paymentButtons(orderId: string, paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '💳 Complete QRIS Payment', url: paymentUrl }], [{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function paymentInstructionMessage(tx: { orderId: string; amount: number; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string; mode: string }): string {
   const adminFee = tx.adminFee ?? Math.max(0, (tx.totalPayment || tx.amount) - tx.amount);

@@ -15,6 +15,7 @@ export type AppErrorCode =
   | 'REPORT_NOT_READY'
   | 'REPO_CONNECT_FAILED'
   | 'REPO_NOT_CONNECTED'
+  | 'REPO_SCAN_LIMIT_REACHED'
   | 'SIMULATION_DISABLED'
   | 'INTERNAL_ERROR';
 
@@ -40,7 +41,8 @@ export function toAppError(error: unknown): AppError {
   if (message === 'Invalid URL') return new AppError('INVALID_URL', message, 'Invalid URL. Use https://example.com.');
   if (message === 'UNSUPPORTED_PROTOCOL') return new AppError('UNSUPPORTED_PROTOCOL', message, 'Only http:// and https:// URLs are allowed.');
   if (message.startsWith('BLOCKED_TARGET')) return new AppError('BLOCKED_TARGET', message, 'Target blocked by safety policy. Public http(s) targets only.');
-  if (message === 'REPO_NOT_CONNECTED') return new AppError('REPO_NOT_CONNECTED', message, 'No GitHub repo connected for this job. Use /connect_repo <job_id> <github_url>.');
+  if (message === 'REPO_NOT_CONNECTED') return new AppError('REPO_NOT_CONNECTED', message, 'Use /repo_scan https://github.com/owner/repo. Public GitHub repos only.');
+  if (message === 'REPO_SCAN_LIMIT_REACHED') return new AppError('REPO_SCAN_LIMIT_REACHED', message, 'Public GitHub repo scan limit reached. Each repo can be scanned once for this account right now.');
   if (message === 'REPO_CONNECT_FAILED') return new AppError('REPO_CONNECT_FAILED', message, 'Could not clone GitHub repo. Public GitHub repos only for now. Private repo SSO/GitHub App support is on the roadmap.');
   if (message === 'SIMULATION_DISABLED') return new AppError('SIMULATION_DISABLED', message, 'Payment simulation is disabled outside sandbox/demo mode.');
   return new AppError('INTERNAL_ERROR', message, 'Request failed safely. Try /help or retry later.');

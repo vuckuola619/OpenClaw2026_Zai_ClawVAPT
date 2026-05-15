@@ -3,7 +3,7 @@ import type { QuotaSnapshot } from './PersistentStore.js';
 export const INITIAL_CREDITS = 10;
 export const SAFE_SCAN_COST = 5;
 export const DEEP_SCAN_COST = 10;
-export const REPO_SCAN_COST = 10;
+export const REPO_SCAN_COST = 25;
 
 export class QuotaStore {
   private scans = new Map<string, number>();
