@@ -3,7 +3,7 @@
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | Read docs 00-12 | DONE | docs/openclaw/ | Source bundle copied. |
-| Telegram command skeleton | DONE | src/telegram/commands.ts | Live token required for runtime polling. |
+| Telegram live bot handlers | DONE | src/telegram/bot.ts, src/telegram/commands.ts | Long polling + inline buttons; token required. |
 | Ownership verification gate | DONE | src/core/ScopeGuard.ts, tests/core.test.ts | Demo token + real skeleton. |
 | Scope lock before scan | DONE | src/core/ScopeGuard.ts | Enforced by orchestrator/scanner. |
 | Audit JSONL events | DONE | src/core/AuditLogger.ts | `logs/demo_audit.jsonl`. |

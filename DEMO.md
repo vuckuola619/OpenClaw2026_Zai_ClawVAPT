@@ -29,3 +29,17 @@ Expected artifacts:
 - `logs/demo_audit.jsonl`
 - `docs/demo-transcript.md`
 - `patches/<job_id>_remediation.patch`
+
+## Button Flow
+
+Open `/start`, then tap:
+
+1. Run Demo
+2. Scan Demo Site
+3. Verify Demo Ownership
+4. Run Safe Scan
+5. Report
+6. Hardening Plan
+7. Pay / Top Up
+8. Check Payment
+

@@ -33,6 +33,8 @@ npm run demo
 
 ## Telegram Commands
 
+Inline buttons are available for Demo, Scan Demo Site, Verify, Run Safe Scan, Status, Report, Hardening Plan, Pay, and Check Payment.
+
 ```txt
 /start
 /help
@@ -59,7 +61,7 @@ npm run demo
 | Built-in safe URL scanner | DONE | HTTP headers/status checks; `.local` uses deterministic fixture. |
 | Built-in repo scanner | DONE | Redacted pattern checks only. |
 | PDF/JSON report | DONE | Minimal generated PDF + structured JSON. |
-| Telegram command skeleton | DONE | Commands documented; live polling requires token and production hardening. |
+| Telegram live bot handlers | DONE | Long polling via Telegram Bot API, inline buttons for demo/scan/status/report/payment; requires `TELEGRAM_BOT_TOKEN`. |
 | Pakasir URL adapter | DONE | URL generation implemented. |
 | Pakasir API validation | MOCK/INCOMPLETE | Mock in `DEMO_MODE`; real API requires env secrets. |
 | External tools | INCOMPLETE/FUTURE | Availability checked; unavailable output never faked. |
