@@ -10,6 +10,7 @@ logs/*.jsonl
 !logs/demo_audit.jsonl
 reports/*.pdf
 reports/*.json
+patches/JOB-*_remediation.patch
 !reports/sample_report.pdf
 !reports/sample_report.json
 runtime/
