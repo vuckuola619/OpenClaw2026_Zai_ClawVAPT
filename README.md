@@ -8,6 +8,10 @@ It verifies web target ownership, locks scan scope, checks credits, runs safe we
 
 ---
 
+## Demo Video
+
+Watch the demo: https://youtu.be/mupug2vA5Ys
+
 ## Why ClawVAPT Stands Out
 
 ### Clear Real-World Use Case

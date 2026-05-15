@@ -27,9 +27,11 @@ https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 
 ## Demo Video
 
-TODO: paste YouTube Unlisted link here.
+https://youtu.be/mupug2vA5Ys
 
 Suggested title: OpenClaw2026_Zai_ClawVAPT
+
+Video link: https://youtu.be/mupug2vA5Ys
 
 ## Pitch Deck
 

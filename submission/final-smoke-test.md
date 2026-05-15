@@ -26,3 +26,7 @@ https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 - `submission/demo-script.md`
 - `submission/demo-shotlist.md`
 - `submission/devpost-fields.md`
+
+## Demo Video
+
+https://youtu.be/mupug2vA5Ys
