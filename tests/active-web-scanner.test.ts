@@ -14,10 +14,10 @@ test('active web scanner blocks unverified and out-of-scope targets', async () =
   await assert.rejects(() => scanner.scan({ jobId: 'JOB-x', userHash: 'u', targetUrl: 'https://example.com', verified: true, scopeLocked: true, scopeHost: 'demo-owned-site.local', approved: true }), /OUT_OF_SCOPE/);
 });
 
-test('active web scanner status keeps nikto and nmap future-gated', () => {
+test('active web scanner status keeps nikto and nmap execution disabled', () => {
   const tools = new ActiveWebScanner().status();
-  assert.equal(tools.find((t) => t.name === 'Nikto')?.status, 'FUTURE');
-  assert.equal(tools.find((t) => t.name === 'Nmap')?.status, 'FUTURE');
+  assert.equal(tools.find((t) => t.name === 'Nikto')?.mode, 'disabled_pending_strict_profile');
+  assert.equal(tools.find((t) => t.name === 'Nmap')?.mode, 'disabled_pending_strict_profile');
 });
 
 test('orchestrator active web preview requires verified scope', async () => {
