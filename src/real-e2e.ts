@@ -15,6 +15,7 @@ export interface RealE2EConfig {
   webProfile: WebProfile;
   approveActiveScan: boolean;
   approveNmap: boolean;
+  jobId?: string;
 }
 
 export interface RealE2EResult {
@@ -44,7 +45,8 @@ export function configFromEnv(env = process.env): RealE2EConfig {
     repoProfile,
     webProfile,
     approveActiveScan: env.REAL_E2E_APPROVE_ACTIVE_SCAN === 'true',
-    approveNmap: env.REAL_E2E_APPROVE_NMAP === 'true'
+    approveNmap: env.REAL_E2E_APPROVE_NMAP === 'true',
+    jobId: env.REAL_E2E_JOB_ID?.trim() || undefined
   };
 }
 
@@ -57,12 +59,16 @@ export function validateRealE2EConfig(config: RealE2EConfig): void {
 
 export async function runRealE2E(config: RealE2EConfig, orchestrator = new MainOrchestrator()): Promise<RealE2EResult> {
   validateRealE2EConfig(config);
-  const job = await orchestrator.createScan(config.operatorId, config.targetUrl);
+  let job = config.jobId ? orchestrator.getJob(config.jobId) : undefined;
+  if (config.jobId && !job) throw new Error('REAL_E2E_JOB_NOT_FOUND');
+  if (job && job.targetUrl !== validatePublicTarget(config.targetUrl).toString()) throw new Error('REAL_E2E_JOB_TARGET_MISMATCH');
+  job ||= await orchestrator.createScan(config.operatorId, config.targetUrl);
+  if (job.userIdHash !== orchestrator.hashUser(config.operatorId)) throw new Error('REAL_E2E_JOB_OPERATOR_MISMATCH');
   const challenge = await orchestrator.createChallenge(job);
   const verification = await orchestrator.verifyOwnership(job.id);
   if (verification.status !== 'DONE') {
     const instructions = challenge.evidence[0]?.summary || orchestrator.challengeInstructions(job.id);
-    throw new Error(`REAL_E2E_OWNERSHIP_PROOF_REQUIRED\nJob: ${job.id}\n${instructions}`);
+    throw new Error(`REAL_E2E_OWNERSHIP_PROOF_REQUIRED\nREAL_E2E_JOB_ID=${job.id}\n${instructions}`);
   }
 
   const connected = await orchestrator.connectRepo(job.id, config.operatorId, config.repoUrl);

@@ -20,6 +20,7 @@ The runner refuses to run when:
 REAL_E2E_TARGET_URL=https://your-owned-domain.com
 REAL_E2E_REPO_URL=https://github.com/owner/repo
 REAL_E2E_OPERATOR_ID=663952250
+REAL_E2E_JOB_ID=                 # set after first challenge run to reuse same token
 REAL_E2E_REPO_PROFILE=safe        # safe|deep
 REAL_E2E_WEB_PROFILE=safe         # safe|deep
 REAL_E2E_APPROVE_ACTIVE_SCAN=true # required for active web scan
@@ -50,10 +51,10 @@ DNS:
 _clawvapt.your-owned-domain.com TXT <token>
 ```
 
-Then rerun:
+Then rerun with the printed job id so the same challenge token is reused:
 
 ```bash
-npm run real:e2e
+REAL_E2E_JOB_ID=JOB-xxxx npm run real:e2e
 ```
 
 ## Output
