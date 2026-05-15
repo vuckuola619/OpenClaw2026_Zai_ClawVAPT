@@ -6,6 +6,7 @@ import { QuotaStore } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
 import { CleanupService, type CleanupResult } from '../core/CleanupService.js';
 import { OwnershipVerifier } from '../core/OwnershipVerifier.js';
+import { OpsService, type BackupResult, type OpsStatus } from '../core/OpsService.js';
 import { PersistentStore } from '../core/PersistentStore.js';
 import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
@@ -157,6 +158,20 @@ export class MainOrchestrator {
     const userHash = this.hashUser(userId);
     const result = apply ? await new CleanupService().apply(ttlDays) : await new CleanupService().preview(ttlDays);
     await this.audit.transition('CLEANUP', userHash, 'MainOrchestrator', 'OPERATOR_REQUEST', 'CLEANUP_COMPLETE', apply ? 'cleanup_apply' : 'cleanup_preview', 'CleanupService', 'DONE', { ttlDays: result.ttlDays, dryRun: result.dryRun }, { candidates: result.candidates.length, deleted: result.deleted.length, bytes: result.bytes });
+    return result;
+  }
+
+  async opsStatus(userId: string): Promise<OpsStatus> {
+    const userHash = this.hashUser(userId);
+    const result = await new OpsService(this.store).status();
+    await this.audit.transition('OPS', userHash, 'MainOrchestrator', 'OPERATOR_REQUEST', 'OPS_STATUS', 'ops_status', 'OpsService', result.status === 'ok' ? 'DONE' : 'ERROR', {}, { jobs: result.database.counts.jobs, scanRuns: result.database.counts.scanRuns, dbBytes: result.database.sizeBytes });
+    return result;
+  }
+
+  async backupDatabase(userId: string): Promise<BackupResult> {
+    const userHash = this.hashUser(userId);
+    const result = await new OpsService(this.store).backupDatabase();
+    await this.audit.transition('BACKUP', userHash, 'MainOrchestrator', 'OPERATOR_REQUEST', 'BACKUP_COMPLETE', 'backup_database', 'OpsService', 'DONE', {}, { path: result.path, bytes: result.sizeBytes });
     return result;
   }
 

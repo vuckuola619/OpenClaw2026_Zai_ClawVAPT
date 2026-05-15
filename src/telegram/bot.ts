@@ -47,6 +47,8 @@ export class TelegramBot {
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health') return this.health(chatId);
+      if (cmd === '/ops') return this.ops(chatId, userId);
+      if (cmd === '/backup_now') return this.backupNow(chatId, userId);
       if (cmd === '/cleanup_preview') return this.cleanup(chatId, userId, false, args[0]);
       if (cmd === '/cleanup_apply') return this.cleanup(chatId, userId, true, args[0]);
       if (cmd === '/tools') return this.toolsStatus(chatId, userId);
@@ -77,6 +79,8 @@ export class TelegramBot {
       if (data === 'scan_demo') return this.createScan(chatId, userId, 'https://demo-owned-site.local');
       if (data === 'pay') return this.pay(chatId, userId);
       if (data === 'health') return this.health(chatId);
+      if (data === 'ops') return this.ops(chatId, userId);
+      if (data === 'backup_now') return this.backupNow(chatId, userId);
       if (data === 'cleanup_preview') return this.cleanup(chatId, userId, false);
       if (data === 'tools') return this.toolsStatus(chatId, userId);
       if (data.startsWith('repo_scan:')) return this.repoScan(chatId, userId, 'safe', data.slice('repo_scan:'.length));
@@ -239,6 +243,19 @@ export class TelegramBot {
     await this.sendMessage(chatId, `Health: ${health.status}\n${checks}`, mainButtons());
   }
 
+  private async ops(chatId: string | number, userId: string): Promise<void> {
+    if (!isOperator(userId)) return this.sendMessage(chatId, 'Ops is operator-only. Set OPERATOR_USER_IDS to enable.', mainButtons());
+    const status = await this.orchestrator.opsStatus(userId);
+    const dirs = Object.entries(status.dirs).map(([k, v]) => `${k}:${v ? 'ok' : 'missing'}`).join(' ');
+    await this.sendMessage(chatId, `Ops status: ${status.status}\nUptime: ${status.uptimeSeconds}s\nMemory: ${status.memoryMb}MB\nDB: ${status.database.present ? 'present' : 'missing'} ${formatBytes(status.database.sizeBytes)}\nJobs: ${status.database.counts.jobs}\nScan runs: ${status.database.counts.scanRuns}\nReports: ${status.database.counts.reports}\nOrders: ${status.database.counts.orders}\nDirs: ${dirs}\nHealth timestamp: ${status.health.timestamp}`, opsButtons());
+  }
+
+  private async backupNow(chatId: string | number, userId: string): Promise<void> {
+    if (!isOperator(userId)) return this.sendMessage(chatId, 'Backup is operator-only. Set OPERATOR_USER_IDS to enable.', mainButtons());
+    const backup = await this.orchestrator.backupDatabase(userId);
+    await this.sendMessage(chatId, `✅ Database backup created\nPath: ${backup.path}\nSize: ${formatBytes(backup.sizeBytes)}\nCreated: ${backup.createdAt}`, opsButtons());
+  }
+
   private async cleanup(chatId: string | number, userId: string, apply: boolean, rawTtl?: string): Promise<void> {
     if (!isOperator(userId)) return this.sendMessage(chatId, 'Cleanup is operator-only. Set OPERATOR_USER_IDS to enable.', mainButtons());
     const ttl = rawTtl ? Number(rawTtl) : undefined;
@@ -335,6 +352,8 @@ export class TelegramBot {
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
       { command: 'health', description: 'Show service health' },
+      { command: 'ops', description: 'Operator ops status' },
+      { command: 'backup_now', description: 'Operator database backup' },
       { command: 'cleanup_preview', description: 'Operator dry-run artifact cleanup' },
       { command: 'cleanup_apply', description: 'Operator apply artifact cleanup' },
       { command: 'tools', description: 'Show security tools status' },
@@ -344,7 +363,8 @@ export class TelegramBot {
   }
 
   private async sendMessage(chatId: string | number, text: string, reply_markup?: ReplyMarkup): Promise<void> {
-    await this.api('sendMessage', { chat_id: chatId, text, reply_markup, disable_web_page_preview: true });
+    const chunks = splitTelegramText(text);
+    for (let i = 0; i < chunks.length; i++) await this.api('sendMessage', { chat_id: chatId, text: chunks[i], reply_markup: i === chunks.length - 1 ? reply_markup : undefined, disable_web_page_preview: true });
   }
 
   private async sendDocument(chatId: string | number, path: string, caption: string): Promise<void> {
@@ -381,8 +401,9 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '🧹 Cleanup Preview', callback_data: 'cleanup_preview' }, { text: '🩺 Health', callback_data: 'health' }], [{ text: '💳 Pay / Top Up', callback_data: 'pay' }, { text: '❔ Help', callback_data: 'help' }], [{ text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 Connect GitHub Repo', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '⚡ Latest Job', callback_data: 'latest' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📦 Reports / Export', callback_data: 'report_help' }], [{ text: '🧰 Ops Status', callback_data: 'ops' }, { text: '🩺 Health', callback_data: 'health' }], [{ text: '💳 Pay / Top Up', callback_data: 'pay' }, { text: '❔ Help', callback_data: 'help' }], [{ text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'Repo Safe', callback_data: 'repo_scan' }], [{ text: 'Repo Deep', callback_data: 'repo_scan_deep' }, { text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function opsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Backup DB Now', callback_data: 'backup_now' }, { text: 'Cleanup Preview', callback_data: 'cleanup_preview' }], [{ text: 'Health', callback_data: 'health' }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Show Challenge', callback_data: `challenge:${jobId}` }, { text: 'Verify Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Repo Safe', callback_data: `repo_scan:${jobId}` }, { text: 'Repo Deep', callback_data: `repo_scan_deep:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Hardening Plan', callback_data: `harden:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
@@ -391,4 +412,5 @@ function repoButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{
 function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Manual Review', callback_data: `manual:${jobId}` }, { text: 'Export Bundle', callback_data: `export:${jobId}` }], [{ text: 'Hardening Plan', callback_data: `harden:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function isOperator(userId: string): boolean { return (process.env.OPERATOR_USER_IDS || '').split(',').map((id) => id.trim()).filter(Boolean).includes(userId); }
 function formatBytes(bytes: number): string { if (bytes < 1024) return `${bytes}B`; if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)}KB`; return `${(bytes/1024/1024).toFixed(1)}MB`; }
+function splitTelegramText(text: string): string[] { const max = 3900; if (text.length <= max) return [text]; const chunks: string[] = []; let rest = text; while (rest.length > max) { const cut = rest.lastIndexOf('\n', max); const idx = cut > 1000 ? cut : max; chunks.push(rest.slice(0, idx)); rest = rest.slice(idx).trimStart(); } if (rest) chunks.push(rest); return chunks; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

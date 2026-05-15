@@ -11,8 +11,10 @@ export interface ReportSnapshot { jobId: string; json: string; pdf: string }
 
 export class PersistentStore {
   private db: Database.Database;
+  readonly path: string;
 
   constructor(path = resolveDbPath(process.env.DATABASE_URL || 'file:./data/clawvapt.db')) {
+    this.path = path;
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
@@ -159,6 +161,20 @@ export class PersistentStore {
   loadScanRuns(jobId?: string): ScanRun[] {
     const found = jobId ? this.db.prepare('SELECT * FROM scan_runs WHERE job_id=? ORDER BY created_at DESC').all(jobId) : this.db.prepare('SELECT * FROM scan_runs ORDER BY created_at DESC').all();
     return rows(found).map(rowToScanRun);
+  }
+
+  async backupTo(destination: string): Promise<void> {
+    mkdirSync(dirname(destination), { recursive: true });
+    await this.db.backup(destination);
+  }
+
+  counts(): { jobs: number; scanRuns: number; reports: number; orders: number } {
+    return {
+      jobs: num(row(this.db.prepare('SELECT COUNT(*) AS n FROM jobs').get())?.n),
+      scanRuns: num(row(this.db.prepare('SELECT COUNT(*) AS n FROM scan_runs').get())?.n),
+      reports: num(row(this.db.prepare('SELECT COUNT(*) AS n FROM reports').get())?.n),
+      orders: num(row(this.db.prepare('SELECT COUNT(*) AS n FROM orders').get())?.n)
+    };
   }
 
   private ensureRepoColumns(): void {
