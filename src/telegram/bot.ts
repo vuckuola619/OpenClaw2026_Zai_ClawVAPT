@@ -286,7 +286,7 @@ export class TelegramBot {
 
   private async runStrictNmapScan(chatId: string | number, userId: string, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
-    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...`);
+    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...\nEstimated time: 1-3 minutes depending on network latency and open ports.`);
     const result = await this.orchestrator.runStrictNmapScan(jobId, userId, true);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No open ports found in strict profile.';
     await this.sendMessage(chatId, `Strict Nmap scan complete\nTarget: ${result.targetUrl}\nProfile: NMAP-STRICT\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
@@ -294,7 +294,8 @@ export class TelegramBot {
 
   private async runActiveWebScan(chatId: string | number, userId: string, jobId?: string, profile: 'safe' | 'deep' = 'safe'): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
-    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...`);
+    const estimate = profile === 'deep' ? '5-15 minutes depending on target speed, WAF/rate limits, and installed scanners.' : '1-3 minutes for low-noise header + safe template checks.';
+    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...\nEstimated time: ${estimate}`);
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
     const q = this.orchestrator.quotaSnapshotForUser(userId);
