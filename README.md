@@ -33,9 +33,11 @@ npm run demo
 
 ## Credits and Scan Limits
 
-- New users start with 10 credits.
-- Safe scans cost 5 credits (`/web_scan`, `/repo_scan`, strict Nmap).
-- Deep scans cost 10 credits (`/web_scan_deep`, `/repo_scan_deep`).
+- New users start with 10 credits (enough for 1 public GitHub repo scan).
+- Web safe scans cost 5 credits (`/web_scan`, strict Nmap).
+- Web deep scans cost 10 credits (`/web_scan_deep`).
+- Public GitHub repo scans cost 10 credits (`/repo_scan`, `/repo_scan_deep`) and request OpenClaw Codex GPT-5.5 advisory review when the bridge is enabled.
+- Private GitHub repo SSO/GitHub App support is roadmap.
 - `/pay` creates a Pakasir top-up order; confirmed payment adds +10 credits.
 - URL ownership verification is reused per user + host. Verify once, then future jobs for the same host skip the challenge.
 - Each verified URL is limited to 5 scan runs across web/repo scans.

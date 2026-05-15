@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { AgentResult, Finding, Job, ScanRun, ToolStatus } from '../types/index.js';
 import { AuditLogger } from '../core/AuditLogger.js';
-import { DEEP_SCAN_COST, QuotaStore, SAFE_SCAN_COST } from '../core/QuotaStore.js';
+import { DEEP_SCAN_COST, QuotaStore, REPO_SCAN_COST, SAFE_SCAN_COST } from '../core/QuotaStore.js';
 import { validatePublicTarget } from '../core/TargetSafety.js';
 import { CleanupService, type CleanupResult } from '../core/CleanupService.js';
 import { OwnershipVerifier } from '../core/OwnershipVerifier.js';
@@ -69,6 +69,17 @@ export class MainOrchestrator {
   quotaSnapshotForUser(userId: string) { return this.quota.ensureUser(this.hashUser(userId)); }
 
   scopeScanUsage(jobId: string): { used: number; limit: number } { const job = this.mustJob(jobId); return { used: this.scansForScope(job), limit: Number(process.env.MAX_SCANS_PER_VERIFIED_SCOPE || 5) }; }
+
+  async renewScope(jobId: string, userId: string): Promise<Job> {
+    const old = this.mustJob(jobId);
+    if (old.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    const quota = this.quota.ensureUser(old.userIdHash);
+    const job: Job = { id: `JOB-${randomUUID().slice(0, 8)}`, userIdHash: old.userIdHash, targetUrl: old.targetUrl, verified: false, scopeLocked: false, scopeHost: '', state: 'RENEW_OWNERSHIP_CHALLENGE', freeScanUsed: false, credits: quota.credits, findings: [] };
+    this.jobs.set(job.id, job);
+    this.store.saveJob(job);
+    await this.audit.transition(job.id, job.userIdHash, 'MainOrchestrator', old.state, 'RENEW_OWNERSHIP_CHALLENGE', 'renew_scope', 'OwnershipVerifier', 'DONE', { previousJob: old.id, targetUrl: old.targetUrl }, { job_id: job.id, credits: quota.credits });
+    return job;
+  }
 
   async createChallenge(job: Job): Promise<AgentResult> {
     const envelope = await this.engine.run('TrustVerifierPaymentAgent', 'challenge', { job });
@@ -220,8 +231,10 @@ export class MainOrchestrator {
     if (job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
     if (!job.verified || !job.scopeLocked) throw new Error('OWNERSHIP_OR_SCOPE_GATE_BLOCKED');
     if (!job.repoPath) throw new Error('REPO_NOT_CONNECTED');
-    this.chargeForScan(job, profile === 'deep' ? DEEP_SCAN_COST : SAFE_SCAN_COST);
+    this.chargeForScan(job, REPO_SCAN_COST);
     const result = await new SecurityToolAdapters(this.audit, job.repoPath, profile === 'deep' ? 90000 : 30000).runRepoSuite(`repo-security-suite-${profile}-${job.id}`, job.userIdHash, profile);
+    const bridge = await this.engine.bridge.publishAgentEnvelope({ agent: 'RedTeamRepoScannerAgent', task: 'scan', job_id: job.id, status: 'DONE', result: { agent: 'RedTeamRepoScannerAgent', job_id: job.id, status: 'DONE', decision: 'OPENCLAW_CODEX_GPT55_REPO_REVIEW_REQUESTED', evidence: [], findings: result.findings.slice(0, 20), next_state: 'REPO_SCAN_AI_REVIEW_REQUESTED', redaction_applied: true, notes: ['Use OpenClaw Codex GPT-5.5 for advisory public GitHub repo review.'] }, started_at: new Date().toISOString(), completed_at: new Date().toISOString(), redaction_applied: true }, `OpenClaw Codex GPT-5.5 advisory repo scan request. Public GitHub repo only. Job: ${job.id}. Repo: ${job.repoUrl}. Commit: ${job.repoCommit}. Profile: ${profile}. Existing scanner findings: ${result.findings.length}. Return concise security review notes only; no external actions; no private data exfiltration.`);
+    result.tools.push({ name: 'OpenClawCodexGPT55Review', status: bridge.status === 'sent' ? 'DONE' : 'INCOMPLETE', available: bridge.status === 'sent', mode: bridge.status === 'sent' ? `openclaw_bridge_run:${bridge.runId || 'started'}` : `openclaw_bridge_${bridge.status}`, notes: [bridge.reason || 'Advisory AI repo review requested through OpenClaw bridge.'] });
     job.findings = mergeFindings(job.findings, result.findings);
     job.state = `REPO_SCAN_${profile.toUpperCase()}_COMPLETE`;
     this.store.saveJob(job);
@@ -306,7 +319,7 @@ export class MainOrchestrator {
 
   private scansForScope(job: Job): number {
     return [...this.jobs.values()]
-      .filter((candidate) => candidate.userIdHash === job.userIdHash && (candidate.scopeHost || new URL(candidate.targetUrl).hostname.toLowerCase()) === (job.scopeHost || new URL(job.targetUrl).hostname.toLowerCase()))
+      .filter((candidate) => candidate.userIdHash === job.userIdHash && (candidate.scopeHost || new URL(candidate.targetUrl).hostname.toLowerCase()) === (job.scopeHost || new URL(job.targetUrl).hostname.toLowerCase()) && (!job.verifiedAt || candidate.verifiedAt === job.verifiedAt))
       .reduce((total, candidate) => total + (this.scanRunsByJob.get(candidate.id) || []).length, 0);
   }
 

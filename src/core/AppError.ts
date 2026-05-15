@@ -29,7 +29,7 @@ export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) return error;
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith('PAYMENT_REQUIRED:')) return new AppError('PAYMENT_REQUIRED', message, `Payment required. Top up credits with /pay, then retry. Order: ${message.split(':')[1] || '-'}`);
-  if (message === 'SCAN_LIMIT_REACHED') return new AppError('SCAN_LIMIT_REACHED', message, 'Scan limit reached for this verified URL. Limit is 5 scan runs per verified scope. Create a new authorized scope cycle or contact support.');
+  if (message === 'SCAN_LIMIT_REACHED') return new AppError('SCAN_LIMIT_REACHED', message, '⚠️ Scan limit reached: this verified URL already used 5/5 scan runs for the current verification cycle. To continue safely, renew ownership verification with /renew_scope <job_id>, add the new HTTP/DNS proof, then run /verify <new_job_id>.');
   if (message === 'JOB_NOT_FOUND') return new AppError('JOB_NOT_FOUND', message, 'Job not found. Use /my_jobs or create a new scan.');
   if (message === 'OWNERSHIP_OR_SCOPE_GATE_BLOCKED') return new AppError('OWNERSHIP_OR_SCOPE_GATE_BLOCKED', message, 'Scan blocked: ownership verification and scope lock required.');
   if (message === 'OWNERSHIP_NOT_VERIFIED') return new AppError('OWNERSHIP_NOT_VERIFIED', message, 'Ownership not verified.');
@@ -41,7 +41,7 @@ export function toAppError(error: unknown): AppError {
   if (message === 'UNSUPPORTED_PROTOCOL') return new AppError('UNSUPPORTED_PROTOCOL', message, 'Only http:// and https:// URLs are allowed.');
   if (message.startsWith('BLOCKED_TARGET')) return new AppError('BLOCKED_TARGET', message, 'Target blocked by safety policy. Public http(s) targets only.');
   if (message === 'REPO_NOT_CONNECTED') return new AppError('REPO_NOT_CONNECTED', message, 'No GitHub repo connected for this job. Use /connect_repo <job_id> <github_url>.');
-  if (message === 'REPO_CONNECT_FAILED') return new AppError('REPO_CONNECT_FAILED', message, 'Could not clone GitHub repo. Confirm URL is public or accessible.');
+  if (message === 'REPO_CONNECT_FAILED') return new AppError('REPO_CONNECT_FAILED', message, 'Could not clone GitHub repo. Public GitHub repos only for now. Private repo SSO/GitHub App support is on the roadmap.');
   if (message === 'SIMULATION_DISABLED') return new AppError('SIMULATION_DISABLED', message, 'Payment simulation is disabled outside sandbox/demo mode.');
   return new AppError('INTERNAL_ERROR', message, 'Request failed safely. Try /help or retry later.');
 }

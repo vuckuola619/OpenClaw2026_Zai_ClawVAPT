@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ScopeGuard } from '../src/core/ScopeGuard.js';
 import { Redactor } from '../src/core/Redactor.js';
-import { QuotaStore } from '../src/core/QuotaStore.js';
+import { QuotaStore, REPO_SCAN_COST } from '../src/core/QuotaStore.js';
 import { PakasirAdapter, isPaidPakasirStatus, normalizePakasirStatus } from '../src/tools/PakasirAdapter.js';
 
 test('ownership challenge generation and demo verification', () => { const s=new ScopeGuard(); const token=s.createChallenge('JOB-1'); assert.equal(token,'clawvapt-verify-JOB-1'); assert.equal(s.verifyDemo(token,'JOB-1'), true); assert.equal(s.verifyDemo('bad','JOB-1'), false); });
 test('scope lock enforcement blocks unverified and out of scope', () => { const s=new ScopeGuard(); assert.throws(()=>s.assertCanScan(false,false), /OWNERSHIP/); const host=s.lockScope('https://example.com/a'); assert.equal(host,'example.com'); assert.throws(()=>s.assertInScope('https://evil.com',host), /OUT_OF_SCOPE/); });
-test('new users start with 10 credits: one deep scan or two safe scans', () => { const q=new QuotaStore(); assert.equal(q.snapshot('u').credits,10); assert.equal(q.check('u',10).allowed,true); q.consume('u',5); assert.equal(q.snapshot('u').credits,5); assert.equal(q.check('u',10).allowed,false); assert.equal(q.check('u',5).allowed,true); q.consume('u',5); assert.equal(q.check('u',5).allowed,false); q.addCredits('u',10); assert.deepEqual(q.check('u',10).reason,'CREDITS'); });
+test('new users start with 10 credits: one repo scan or two web safe scans', () => { const q=new QuotaStore(); assert.equal(q.snapshot('u').credits,10); assert.equal(REPO_SCAN_COST,10); assert.equal(q.check('u',REPO_SCAN_COST).allowed,true); q.consume('u',5); assert.equal(q.snapshot('u').credits,5); assert.equal(q.check('u',REPO_SCAN_COST).allowed,false); assert.equal(q.check('u',5).allowed,true); q.consume('u',5); assert.equal(q.check('u',5).allowed,false); q.addCredits('u',10); assert.deepEqual(q.check('u',REPO_SCAN_COST).reason,'CREDITS'); });
 test('pakasir payment url generation', () => { const p=new PakasirAdapter(); const url=p.createPaymentUrl('ORDER-1',25000); assert.match(url,/order_id=ORDER-1/); assert.match(url,/25000/); });
 
 test('pakasir simulation is sandbox/demo gated', async () => {

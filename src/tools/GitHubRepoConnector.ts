@@ -14,20 +14,19 @@ export class GitHubRepoConnector {
     if (!repoPath.startsWith(resolve(this.baseDir))) throw new AppError('BLOCKED_TARGET', 'REPO_PATH_ESCAPE', 'Repository path blocked.');
     mkdirSync(this.baseDir, { recursive: true });
     rmSync(repoPath, { recursive: true, force: true });
-    const clone = spawnSync('git', ['clone', '--depth', '1', parsed.cloneUrl, repoPath], { encoding: 'utf8', timeout: 120000, maxBuffer: 1_000_000, env: gitEnv() });
-    if (clone.status !== 0) throw new AppError('REPO_CONNECT_FAILED', 'REPO_CONNECT_FAILED', 'Could not clone GitHub repo. Confirm URL is public or accessible.');
+    const clone = spawnSync('git', ['clone', '--depth', '1', parsed.cloneUrl, repoPath], { encoding: 'utf8', timeout: 120000, maxBuffer: 1_000_000, env: publicGitEnv() });
+    if (clone.status !== 0) throw new AppError('REPO_CONNECT_FAILED', 'REPO_CONNECT_FAILED', 'Could not clone GitHub repo. Public GitHub repos only for now. Private repo SSO/GitHub App support is on the roadmap.');
     const head = spawnSync('git', ['-C', repoPath, 'rev-parse', '--short=12', 'HEAD'], { encoding: 'utf8', timeout: 10000 });
     return { repoUrl: parsed.htmlUrl, repoPath, owner: parsed.owner, repo: parsed.repo, commit: head.stdout.trim() || 'unknown' };
   }
 }
 
-function gitEnv(): NodeJS.ProcessEnv {
+export function publicGitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  if (process.env.GITHUB_TOKEN) {
-    env.GIT_CONFIG_COUNT = '1';
-    env.GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader';
-    env.GIT_CONFIG_VALUE_0 = `Authorization: Basic ${Buffer.from(`x-access-token:${process.env.GITHUB_TOKEN}`).toString('base64')}`;
-  }
+  delete env.GITHUB_TOKEN;
+  delete env.GH_TOKEN;
+  delete env.GIT_ASKPASS;
+  delete env.SSH_ASKPASS;
   return env;
 }
 
