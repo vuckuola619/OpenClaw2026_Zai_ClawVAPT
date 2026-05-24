@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 node_modules/
+.worktrees/
+worktrees/
 dist/
 data/
 backups/
