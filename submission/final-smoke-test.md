@@ -8,13 +8,22 @@ Date: 2026-07-21 UTC
 - `npm run typecheck` — passed
 - `npm test` — passed, 47/47 tests
 - `npm run build` — passed
+- `npm run demo` — passed, regenerated sample report/audit/transcript
 - PM2 app `clawthon` — online
+- Telegram API `getMe` — OK, username `capithon_bot`
 - GitHub repo — public
 - Pitch deck PDF — 5 pages
 
 ## Notes
 
 Full `npm test` is intentionally slower because quota/scope and repo security tests exercise realistic flows. Latest run passed all 47 tests locally.
+
+Latest local commit: `47d1485 Polish judge walkthrough UX`.
+
+Push attempt from this environment failed with GitHub 403 for the configured HTTPS credential. Fresh transfer artifacts were generated:
+
+- `outgoing-build-week.patch`
+- `outgoing-build-week.bundle`
 
 ## Public Repository
 
