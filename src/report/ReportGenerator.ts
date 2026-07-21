@@ -22,8 +22,18 @@ export class ReportGenerator {
       target: { web_url: job.targetUrl, repo_url: job.repoUrl || null, repo_commit: job.repoCommit || null },
       authorization_and_scope:{ verified:job.verified, scope_locked:job.scopeLocked, scope_host:job.scopeHost, verification_method: job.verificationMethod || null, verified_at: job.verifiedAt || null },
       scan_runs: scanRuns.map((r) => ({ id: r.id, type: r.type, profile: r.profile, approval: r.approval, created_at: r.createdAt, tools: r.tools.map((t) => ({ name: t.name, status: t.status, mode: t.mode })), findings: r.findings.length })),
+      executive_summary: {
+        product: 'Telegram-first multi-agent VAPT triage with ownership gates, explicit approvals, credits, redaction, and report delivery.',
+        priority_lane: priorityLane(job.findings),
+        judge_value: ['Working Telegram UX', 'deterministic local demo', 'public repo scan path', 'active web scan guardrails', 'PDF/JSON/manual-review evidence bundle']
+      },
       severity_summary: severity,
       methodology:['pre-engagement','ownership verification','scope lock','GitHub repo attachment','safe/deep repo scanner','safe/deep web scanner','normalization','correlation','redaction','reporting'],
+      vulnerability_program: {
+        prioritization: 'Severity is combined with manual-review signals such as authZ/IDOR/payment/tenant-isolation risk; CISA KEV enrichment is reserved for enabled scanner adapters.',
+        remediation_sla: remediationSlaSummary(job.findings),
+        safety_controls: ['ownership verification', 'scope lock', 'explicit scan approval', 'low-noise profiles', 'credit gate', 'secret redaction']
+      },
       tool_matrix: toolMatrix,
       tools_used:[...tools],
       findings: job.findings,
@@ -50,6 +60,7 @@ export class ReportGenerator {
       `Scope: ${job.scopeHost || '-'}`,
       `Verification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}`,
       `Severity C/H/M/L/I: ${severity.CRITICAL}/${severity.HIGH}/${severity.MEDIUM}/${severity.LOW}/${severity.INFO}`,
+      `Priority: ${priorityLane(findings)}`,
       'Tool Matrix:',
       ...tools.slice(0,10).map(t=>`${t.name} ${t.status} ${t.mode}`),
       'Findings Summary:',
@@ -82,4 +93,23 @@ function remediationPriorities(findings: Finding[]): string[] {
   if (findings.some((f) => /auth|idor|jwt|access/i.test(`${f.title} ${f.description}`))) recs.push('Manual review: authorization, IDOR, JWT/session handling, and tenant isolation.');
   if (findings.some((f) => /header|csp|hsts|frame/i.test(`${f.title} ${f.description}`))) recs.push('Hardening: enforce CSP, HSTS, X-Frame-Options/frame-ancestors, X-Content-Type-Options, Referrer-Policy.');
   return recs.length ? recs : ['No priority remediation generated from current findings; perform manual validation.'];
+}
+
+function priorityLane(findings: Finding[]): string {
+  const sev = severitySummary(findings);
+  if (sev.CRITICAL > 0) return 'P1 immediate validation and remediation';
+  if (sev.HIGH > 0) return 'P2 high-priority remediation within 7 days';
+  if (sev.MEDIUM > 0) return 'P3 scheduled hardening within 30 days';
+  if (findings.length > 0) return 'P4 monitor, harden, and verify';
+  return 'No scanner findings yet; manual validation still required';
+}
+
+function remediationSlaSummary(findings: Finding[]): Array<{ priority: string; condition: string; target: string }> {
+  const sev = severitySummary(findings);
+  return [
+    { priority: 'P1', condition: 'Critical or known exploited vulnerability on exposed asset', target: sev.CRITICAL > 0 ? '24 hours' : 'not triggered' },
+    { priority: 'P2', condition: 'High severity or auth/payment/tenant isolation concern', target: sev.HIGH > 0 || findings.some((f) => /auth|idor|payment|tenant/i.test(`${f.title} ${f.description}`)) ? '7 days' : 'not triggered' },
+    { priority: 'P3', condition: 'Medium severity hardening issue', target: sev.MEDIUM > 0 ? '30 days' : 'not triggered' },
+    { priority: 'P4', condition: 'Low/info or best-practice finding', target: sev.LOW + sev.INFO > 0 ? 'next security cycle' : 'not triggered' }
+  ];
 }

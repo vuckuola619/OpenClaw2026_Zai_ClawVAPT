@@ -6,6 +6,7 @@ import { formatSafeError } from '../core/AppError.js';
 import { helpText } from './commands.js';
 import { severitySummary } from '../report/ReportGenerator.js';
 import { DEEP_SCAN_COST, REPO_SCAN_COST, SAFE_SCAN_COST } from '../core/QuotaStore.js';
+import type { Job } from '../types/index.js';
 
 // --- Progress helpers ---
 
@@ -104,6 +105,7 @@ export class TelegramBot {
       this.limiter.assertAllowed(userId, cmd === '/scan' || cmd === '/web_scan_deep' ? 3 : 1);
       void this.sendChatAction(chatId);
       if (cmd === '/start' || cmd === '/menu') return this.sendMainMenu(chatId);
+      if (cmd === '/judge') return this.judgeGuide(chatId);
       if (cmd === '/help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (cmd === '/demo') return this.runDemo(chatId);
       if (cmd === '/scan') return this.createScan(chatId, userId, args.join(' '));
@@ -142,6 +144,7 @@ export class TelegramBot {
       this.limiter.assertAllowed(userId, data.startsWith('run:') || data.startsWith('activeweb:') || data.startsWith('deepweb:') || data === 'scan_demo' ? 3 : 1);
       void this.sendChatAction(chatId);
       if (data === 'menu') return this.sendMainMenu(chatId);
+      if (data === 'judge') return this.judgeGuide(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'scan_help') return this.sendMessage(chatId, 'Website scan flow:\n/scan https://app.example.com\n/verify JOB-xxxx\n/web_scan JOB-xxxx\n/web_scan_deep JOB-xxxx\n/nmap_scan JOB-xxxx\n\nDifference:\n• Run Safe Scan: basic combined safe workflow/report gate.\n• Active Web Safe: low-noise headers + safe Nuclei templates. Cost 5.\n• Active Web Deep: deeper non-destructive CVE/KEV/injection + controlled Nikto. Cost 10.\n• Strict Nmap: single-host low-rate port discovery only. Cost 5.', mainButtons());
       if (data === 'repo_help') return this.sendMessage(chatId, 'Code/GitHub scan flow:\n/repo_scan https://github.com/owner/repo\n\nRules:\n• Standalone public GitHub repo scan, not linked to web target jobs.\n• Cost: 25 credits.\n• Limit: 1 scan per public repo per account for now.\n• Private repo SSO/GitHub App support is roadmap.', mainButtons());
@@ -196,13 +199,17 @@ export class TelegramBot {
 
   private async sendMainMenu(chatId: string | number): Promise<void> {
     const q = this.orchestrator.quotaSnapshotForUser(String(chatId));
-    return this.sendMessage(chatId, `🔒 ClawVAPT\nTelegram-first VAPT assistant for authorized website checks + standalone public GitHub repo scans. Web targets require ownership verification; GitHub repo scans are separate and only accept public repos.\n\nCredits: ${q.credits}\n• Web safe scan costs 5 credits\n• Web deep scan costs 10 credits\n• Public GitHub repo scan costs 25 credits\n• Top up with /pay (+10 credits after payment complete)\n\nWeb flow:\n1) /scan <url>\n2) /verify <job_id> once per URL\n3) /web_scan <job_id> or /web_scan_deep <job_id>\n4) reports are sent automatically after active web scan\n\nGitHub flow:\n/repo_scan https://github.com/owner/repo\nLimit: 1 scan per repo per account for now.\n\nVerified URL limit: 5 scan runs per scope.`, mainButtons());
+    return this.sendMessage(chatId, `🔒 ClawVAPT Command Center\nTelegram-first VAPT assistant for authorized website checks + standalone public GitHub repo scans.\n\nOperator value:\n• ownership gate before active web scans\n• explicit approval before noisy tools\n• credits/payment guard before work starts\n• redacted PDF/JSON/manual-review reports in chat\n• audit trail for every agent/tool transition\n\nCredits: ${q.credits}\nSafe web: 5 | Deep web: 10 | Public repo: 25 | Top up: /pay (+10)\n\nFastest judge path: tap Judge Walkthrough, then Demo / Sandbox.\n\nWeb flow:\n1) /scan <url>\n2) /verify <job_id>\n3) /web_scan <job_id> or /web_scan_deep <job_id>\n4) report bundle arrives automatically\n\nGitHub flow:\n/repo_scan https://github.com/owner/repo\nLimit: 1 scan per repo per account.\n\nVerified URL limit: 5 scan runs per scope.`, mainButtons());
+  }
+
+  private async judgeGuide(chatId: string | number): Promise<void> {
+    return this.sendMessage(chatId, `🏁 ClawVAPT Judge Walkthrough\n\nCategory: Developer Tools\n\nWhat it is:\nTelegram-first multi-agent VAPT triage for security operators. It turns risky scanner steps into a gated workflow: verify ownership, lock scope, approve scan profile, charge credits, run tools, redact evidence, and deliver reports.\n\nWinning demo path:\n1) /demo — deterministic sandbox run, no external target needed\n2) /scan https://demo-owned-site.local — ownership challenge UX\n3) /status <job_id> — scope, credits, usage, severity summary\n4) /report <job_id> — PDF + JSON artifacts\n5) /pay — QRIS credit flow in sandbox mode\n\nWhat judges should notice:\n• not prompt-only: deterministic TypeScript orchestration\n• live Telegram UX with inline buttons and progress phases\n• safety gates for active web scans\n• public GitHub repo scan isolated from web target scope\n• report bundle includes scanner results + manual review priorities\n• Codex/GPT-5.6 used for vertical slices, tests, UX polish, docs, and submission package\n\nLocal test path:\nnpm install\nnpm run lint\nnpm run typecheck\nnpm test\nnpm run build\nnpm run demo`, { inline_keyboard: [[{ text: 'Run Demo / Sandbox', callback_data: 'demo' }], [{ text: 'Start Web Scan', callback_data: 'scan_help' }, { text: 'Repo Scan', callback_data: 'repo_help' }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
   private async runDemo(chatId: string | number): Promise<void> {
     await this.sendMessage(chatId, 'Running deterministic demo...');
     const result = await this.orchestrator.demo();
-    await this.sendMessage(chatId, `✅ Demo complete\nEngine: MultiAgentEngine\nAgents: TrustVerifierPaymentAgent → RedTeamRepoScannerAgent → BlueTeamHardeningReportAgent\nJob: ${result.job.id}\nFindings: ${result.job.findings.length}\nPayment order: ${result.job.orderId}\nReports ready.`, jobButtons(result.job.id, result.job.orderId));
+    await this.sendMessage(chatId, `✅ Demo complete\nEngine: MultiAgentEngine\nAgents: TrustVerifierPaymentAgent → RedTeamRepoScannerAgent → BlueTeamHardeningReportAgent\nJob: ${result.job.id}\n${riskCard(result.job)}\nPayment order: ${result.job.orderId}\nReports ready: PDF + JSON + audit transcript.\n\nJudge note: this path proves ownership gate, credit/payment gate, report generation, and redaction without touching an external target.`, jobButtons(result.job.id, result.job.orderId));
     await this.sendDocument(chatId, result.reports.pdf, 'Sample PDF report');
     await this.sendDocument(chatId, result.reports.json, 'Sample JSON report');
   }
@@ -283,7 +290,7 @@ export class TelegramBot {
     const q = userId ? this.orchestrator.quotaSnapshotForUser(userId) : { credits: job.credits };
     const isRepoOnly = Boolean(job.repoUrl) && !job.scopeHost && job.targetUrl.startsWith('https://github.com/');
     const usageLine = isRepoOnly ? 'Repo scan usage: 1/1 max per repo/account' : `Scan usage for URL: ${this.orchestrator.scopeScanUsage(job.id).used}/${this.orchestrator.scopeScanUsage(job.id).limit}`;
-    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nCredits: ${q.credits}\n${usageLine}\nWeb target: ${isRepoOnly ? '-' : job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\nFindings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}`, jobButtons(job.id, job.orderId));
+    return this.sendMessage(chatId, `Status ${job.id}\nState: ${job.state}\nCredits: ${q.credits}\n${usageLine}\nWeb target: ${isRepoOnly ? '-' : job.targetUrl}\nVerified: ${job.verified}\nVerification: ${job.verificationMethod || '-'} ${job.verifiedAt || ''}\nScope locked: ${job.scopeLocked}\nScope: ${job.scopeHost || '-'}\nRepo: ${job.repoUrl || '-'}\nRepo commit: ${job.repoCommit || '-'}\nLast repo scan: ${lastRepo ? `${lastRepo.profile} ${lastRepo.createdAt}` : '-'}\nLast web scan: ${lastWeb ? `${lastWeb.profile} ${lastWeb.createdAt}` : '-'}\n${riskCard(job)}\nNext action: ${nextActionForJob(job)}`, jobButtons(job.id, job.orderId));
   }
 
   private async myJobs(chatId: string | number, userId: string): Promise<void> {
@@ -418,8 +425,8 @@ export class TelegramBot {
     await progress.complete((mid, text) => this.editMessage(chatId, mid, text));
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
     const q = this.orchestrator.quotaSnapshotForUser(userId);
-    const ai = result.tools.find((t) => t.name === 'OpenClawCodexGPT55Review');
-    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${job.id}\nRepo: ${job.repoUrl}\nProfile: ${result.profile.toUpperCase()}\nCredits: -${before - q.credits} → ${q.credits} remaining\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.5: ${ai?.available ? 'requested' : 'not available'}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, reportButtons(job.id));
+    const ai = result.tools.find((t) => t.name === 'OpenClawCodexGPT56Review');
+    await this.sendMessage(chatId, `Repo security suite complete\nJob: ${job.id}\nRepo: ${job.repoUrl}\nProfile: ${result.profile.toUpperCase()}\nCredits: -${before - q.credits} → ${q.credits} remaining\nTools: ${result.tools.length}\nOpenClaw Codex GPT-5.6: ${ai?.available ? 'requested' : 'not available'}\n${riskCard(job)}\n\nTop findings:\n${top}\n\nRecommendations:\n${result.recommendations.map((r) => `• ${r}`).join('\n')}`, reportButtons(job.id));
     await this.sendDocument(chatId, reports.pdf, 'Repo PDF report');
     await this.sendDocument(chatId, reports.json, 'Repo JSON report');
   }
@@ -563,6 +570,7 @@ export class TelegramBot {
       { command: 'start', description: 'Open ClawVAPT menu' },
       { command: 'menu', description: 'Refresh ClawVAPT menu' },
       { command: 'help', description: 'Show commands and safety rules' },
+      { command: 'judge', description: 'Judge walkthrough and fastest demo path' },
       { command: 'demo', description: 'Run deterministic demo' },
       { command: 'scan', description: 'Create web target: /scan https://site.com' },
       { command: 'verify', description: 'Verify HTTP/DNS ownership proof' },
@@ -644,7 +652,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '🔍 Start New Web Scan', callback_data: 'scan_help' }, { text: '📦 Repo Scan', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📈 Job Summary', callback_data: 'summary' }], [{ text: '🧭 Scan Commands', callback_data: 'tools' }, { text: '📄 Reports', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Add Credits', callback_data: 'pay' }], [{ text: '❓ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '🏁 Judge Walkthrough', callback_data: 'judge' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }], [{ text: '🔍 Start New Web Scan', callback_data: 'scan_help' }, { text: '📦 Repo Scan', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📈 Job Summary', callback_data: 'summary' }], [{ text: '🧭 Scan Commands', callback_data: 'tools' }, { text: '📄 Reports', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Add Credits', callback_data: 'pay' }], [{ text: '❓ Help', callback_data: 'help' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'GitHub Scan Usage', callback_data: 'repo_scan' }], [{ text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Show Challenge', callback_data: `challenge:${jobId}` }, { text: 'Verify Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
@@ -662,5 +670,17 @@ function paymentPendingMessage(orderId: string, result: { status: string; method
 function paymentPaidMessage(orderId: string, result: { status: string; method?: string; adminFee?: number; totalPayment?: number; completedAt?: string; creditsAdded: number; alreadyCredited: boolean }, credits: number): string { return `✅ Payment completed\n\nOrder ID: ${orderId}\nStatus: ${result.status}\nMethod: ${(result.method || 'qris').toUpperCase()}\n${result.adminFee !== undefined ? `Admin Fee: ${rupiah(result.adminFee)}\n` : ''}${result.totalPayment !== undefined ? `Total Payment: ${rupiah(result.totalPayment)}\n` : ''}${result.completedAt ? `Paid At: ${result.completedAt}\n` : ''}Credits added: +${result.creditsAdded}${result.alreadyCredited ? ' (already credited before)' : ''}\nCurrent credits: ${credits}`; }
 function paymentQrUrl(paymentUrl: string): string { return `https://api.qrserver.com/v1/create-qr-code/?size=640x640&data=${encodeURIComponent(paymentUrl)}`; }
 function rupiah(value: number): string { return `Rp ${Math.round(value).toLocaleString('id-ID')}`; }
+function riskCard(job: Job): string {
+  const sev = severitySummary(job.findings);
+  const priority = sev.CRITICAL > 0 ? 'P1 immediate validation' : sev.HIGH > 0 ? 'P2 high-priority remediation' : sev.MEDIUM > 0 ? 'P3 scheduled hardening' : job.findings.length > 0 ? 'P4 monitor and verify' : 'No scanner findings yet';
+  const manual = job.findings.some((f) => /auth|idor|jwt|access|payment|tenant/i.test(`${f.title} ${f.description}`)) ? 'Manual review required: authZ/business logic/payment integrity' : 'Manual review required before client-facing closure';
+  return `Findings: ${job.findings.length}\nSeverity C/H/M/L/I: ${sev.CRITICAL}/${sev.HIGH}/${sev.MEDIUM}/${sev.LOW}/${sev.INFO}\nPriority lane: ${priority}\n${manual}`;
+}
+function nextActionForJob(job: Job): string {
+  if (job.repoUrl) return 'review report bundle, then validate top findings manually';
+  if (!job.verified || !job.scopeLocked) return `/verify ${job.id}`;
+  if (!job.findings.length) return `/web_scan ${job.id} or /web_scan_deep ${job.id}`;
+  return `/report ${job.id} or /manual_review ${job.id}`;
+}
 function splitTelegramText(text: string): string[] { const max = 3900; if (text.length <= max) return [text]; const chunks: string[] = []; let rest = text; while (rest.length > max) { const cut = rest.lastIndexOf('\n', max); const idx = cut > 1000 ? cut : max; chunks.push(rest.slice(0, idx)); rest = rest.slice(idx).trimStart(); } if (rest) chunks.push(rest); return chunks; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

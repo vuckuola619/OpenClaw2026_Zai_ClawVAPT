@@ -83,7 +83,7 @@ Inspect generated artifacts:
 Live sandbox demo:
 
 - Telegram bot: `@capithon_bot`
-- Use `/start`, `/demo`, `/scan https://demo-owned-site.local`, `/verify <job_id>`, `/web_scan <job_id>`, `/pay`.
+- Use `/judge`, `/demo`, `/scan https://demo-owned-site.local`, `/verify <job_id>`, `/status <job_id>`, `/report <job_id>`, `/pay`.
 - Payment completion is sandbox/demo mode; no real payment required for judging.
 
 Supported platforms: Node.js 22 on Linux/macOS, Telegram Bot API, PM2 for the live demo. Dockerfile and Compose are included.
@@ -96,6 +96,7 @@ Meaningful Build Week extension:
 
 - multi-agent workflow tightened around Trust, Red Team, and Blue Team roles
 - scan approval/progress UX in Telegram
+- judge walkthrough command and clearer Telegram command center UX
 - public GitHub repo scan flow
 - Pakasir QRIS credit top-up path
 - SQLite persistence and audit evidence

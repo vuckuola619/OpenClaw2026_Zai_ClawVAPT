@@ -18,7 +18,7 @@ Watch the demo: https://youtu.be/mupug2vA5Ys
 - Live demo: Telegram bot `@capithon_bot`
 - Repository: https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
 - Demo video: https://youtu.be/mupug2vA5Ys
-- Judge test path: run the local deterministic demo with `npm run demo`, or use the live Telegram bot in sandbox mode.
+- Judge test path: run the local deterministic demo with `npm run demo`, or use the live Telegram bot in sandbox mode with `/judge` then `/demo`.
 
 ## Pitch Deck
 
@@ -71,6 +71,7 @@ The MVP is live as a Telegram bot, has reproducible setup, persistent jobs/credi
 ### Web Target Scan
 
 ```txt
+/judge
 /scan https://example.com
 /verify JOB-xxxx
 /web_scan JOB-xxxx
@@ -187,6 +188,7 @@ openclaw-workspace/agents/
 - SQLite persistence for jobs, reports, orders, and quotas
 - credit debit/remaining balance messages
 - scan time estimates
+- judge walkthrough command (`/judge`)
 - automatic report delivery
 - safe error messages
 - audit JSONL events

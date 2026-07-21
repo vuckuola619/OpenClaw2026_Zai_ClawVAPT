@@ -12,6 +12,7 @@
 - [x] Judge testing instructions
 - [x] Supported platforms for developer-tool judging
 - [x] Live/sandbox test path: Telegram bot `@capithon_bot`
+- [x] Judge walkthrough command: `/judge`
 - [x] Sample report artifacts
 - [x] Codex/GPT-5.6 collaboration notes
 - [ ] `/feedback` Codex session ID pasted into Devpost form
@@ -32,5 +33,5 @@ npm run demo
 2. Paste fields from `submission/devpost-fields.md`.
 3. Add demo video URL.
 4. Add GitHub repository URL.
-5. Add live bot note: `Telegram bot @capithon_bot, sandbox/demo payment mode`.
+5. Add live bot note: `Telegram bot @capithon_bot, use /judge then /demo, sandbox/demo payment mode`.
 6. Run `/feedback` in the Codex session used for core build work and paste the session ID.

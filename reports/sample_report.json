@@ -1,6 +1,6 @@
 {
-  "job_id": "JOB-8b6681ab",
-  "generated_at": "2026-07-21T19:35:05.406Z",
+  "job_id": "JOB-34b22b0c",
+  "generated_at": "2026-07-21T19:55:58.816Z",
   "target": {
     "web_url": "https://demo-owned-site.local/",
     "repo_url": null,
@@ -11,9 +11,20 @@
     "scope_locked": true,
     "scope_host": "demo-owned-site.local",
     "verification_method": "demo",
-    "verified_at": "2026-07-21T19:35:04.136Z"
+    "verified_at": "2026-07-21T19:55:58.367Z"
   },
   "scan_runs": [],
+  "executive_summary": {
+    "product": "Telegram-first multi-agent VAPT triage with ownership gates, explicit approvals, credits, redaction, and report delivery.",
+    "priority_lane": "P2 high-priority remediation within 7 days",
+    "judge_value": [
+      "Working Telegram UX",
+      "deterministic local demo",
+      "public repo scan path",
+      "active web scan guardrails",
+      "PDF/JSON/manual-review evidence bundle"
+    ]
+  },
   "severity_summary": {
     "INFO": 1,
     "LOW": 3,
@@ -33,6 +44,39 @@
     "redaction",
     "reporting"
   ],
+  "vulnerability_program": {
+    "prioritization": "Severity is combined with manual-review signals such as authZ/IDOR/payment/tenant-isolation risk; CISA KEV enrichment is reserved for enabled scanner adapters.",
+    "remediation_sla": [
+      {
+        "priority": "P1",
+        "condition": "Critical or known exploited vulnerability on exposed asset",
+        "target": "not triggered"
+      },
+      {
+        "priority": "P2",
+        "condition": "High severity or auth/payment/tenant isolation concern",
+        "target": "7 days"
+      },
+      {
+        "priority": "P3",
+        "condition": "Medium severity hardening issue",
+        "target": "30 days"
+      },
+      {
+        "priority": "P4",
+        "condition": "Low/info or best-practice finding",
+        "target": "next security cycle"
+      }
+    ],
+    "safety_controls": [
+      "ownership verification",
+      "scope lock",
+      "explicit scan approval",
+      "low-noise profiles",
+      "credit gate",
+      "secret redaction"
+    ]
+  },
   "tool_matrix": [
     {
       "name": "zap-baseline.py",

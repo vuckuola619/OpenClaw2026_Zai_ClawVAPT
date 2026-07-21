@@ -16,6 +16,7 @@ Hard rule: keep scope frozen. Fix blockers, polish proof, document everything ju
 - [x] Demo video URL present and under 3 minutes
 - [x] Public repo URL present
 - [x] Live/sandbox judge path exists: Telegram `@capithon_bot`
+- [x] In-bot judge walkthrough exists: `/judge`
 - [x] Local deterministic judge path exists: `npm run demo`
 - [x] Sample report artifacts generated
 - [x] Codex/GPT-5.6 contribution highlighted
@@ -86,6 +87,7 @@ Manual demo path:
 
 ```txt
 /start
+/judge
 /demo
 /scan https://demo-owned-site.local
 /verify <job_id>
