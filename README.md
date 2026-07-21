@@ -77,6 +77,8 @@ The MVP is live as a Telegram bot, has reproducible setup, persistent jobs/credi
 /web_scan JOB-xxxx
 /web_scan_deep JOB-xxxx
 /nmap_scan JOB-xxxx
+/gpt_review JOB-xxxx
+/manual_review JOB-xxxx
 ```
 
 Web scans are protected by:
@@ -189,6 +191,7 @@ openclaw-workspace/agents/
 - credit debit/remaining balance messages
 - scan time estimates
 - judge walkthrough command (`/judge`)
+- GPT-5.6 advisory pack command (`/gpt_review`) with deterministic fallback
 - automatic report delivery
 - safe error messages
 - audit JSONL events
@@ -216,6 +219,7 @@ openclaw-workspace/agents/
 | Tool | Role |
 |---|---|
 | Codex with GPT-5.6 | Build Week implementation partner for product planning, code changes, tests, docs, demo assets, and submission polish. |
+| GPT-5.6 Advisor | Optional configured runtime advisor for turning sanitized findings into validation plans, remediation tickets, executive readouts, and residual-risk notes. |
 | TypeScript MultiAgentEngine | Deterministic product agent loop and tool routing. |
 | OpenClaw | Operator runtime and optional advisory bridge. |
 | OpenClaw Codex advisory bridge | Optional sanitized public-repo security review path. |
@@ -229,6 +233,7 @@ openclaw-workspace/agents/
 ClawVAPT existed as a security-operator idea before submission, then was meaningfully extended during Build Week with Codex-assisted implementation and hardening:
 
 - Telegram-first scan UX with inline buttons, explicit approval gates, and progress messages.
+- GPT-5.6 advisory pack command for real operator triage, with safe deterministic fallback when no API key is configured.
 - Persistent SQLite jobs, credit accounting, orders, scan runs, and report records.
 - Standalone public GitHub repo scan flow with one-scan-per-repo/account guardrails.
 - Active web safe/deep scan approvals, strict low-rate Nmap profile, and scan-run limits.
@@ -259,9 +264,22 @@ Demo output:
 ```txt
 reports/sample_report.pdf
 reports/sample_report.json
+reports/sample_gpt56_advisory.md
+reports/sample_gpt56_advisory.json
 logs/demo_audit.jsonl
 docs/demo-transcript.md
 ```
+
+Optional GPT-5.6 runtime advisory:
+
+```bash
+GPT56_ADVISOR_ENABLED=true
+GPT56_MODEL=gpt-5.6
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+When not configured, `/gpt_review <job_id>` still generates a deterministic redacted advisory pack so judges can test the workflow without secrets.
 
 No Telegram token is required for the deterministic local demo.
 
@@ -320,6 +338,8 @@ Artifacts to inspect after `npm run demo`:
 ```txt
 reports/sample_report.pdf
 reports/sample_report.json
+reports/sample_gpt56_advisory.md
+reports/sample_gpt56_advisory.json
 logs/demo_audit.jsonl
 docs/demo-transcript.md
 ```

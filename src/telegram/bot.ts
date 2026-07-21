@@ -118,6 +118,7 @@ export class TelegramBot {
       if (cmd === '/report') return this.report(chatId, args[0]);
       if (cmd === '/export') return this.exportBundle(chatId, args[0]);
       if (cmd === '/manual_review') return this.manualReview(chatId, args[0]);
+      if (cmd === '/gpt_review') return this.gptReview(chatId, userId, args[0]);
       if (cmd === '/harden') return this.harden(chatId, args[0]);
       if (cmd === '/pay') return this.pay(chatId, userId);
       if (cmd === '/health' || cmd === '/summary') return this.jobSummary(chatId, userId);
@@ -172,6 +173,7 @@ export class TelegramBot {
       if (data.startsWith('report:')) return this.report(chatId, data.slice('report:'.length));
       if (data.startsWith('export:')) return this.exportBundle(chatId, data.slice('export:'.length));
       if (data.startsWith('manual:')) return this.manualReview(chatId, data.slice('manual:'.length));
+      if (data.startsWith('gpt:')) return this.gptReview(chatId, userId, data.slice('gpt:'.length));
       if (data.startsWith('harden:')) return this.harden(chatId, data.slice('harden:'.length));
       if (data.startsWith('checkpay:')) return this.checkPayment(chatId, userId, data.slice('checkpay:'.length));
       if (data.startsWith('finishpay:')) return this.completePaymentFromButton(chatId, userId, data.slice('finishpay:'.length));
@@ -203,7 +205,7 @@ export class TelegramBot {
   }
 
   private async judgeGuide(chatId: string | number): Promise<void> {
-    return this.sendMessage(chatId, `🏁 ClawVAPT Judge Walkthrough\n\nCategory: Developer Tools\n\nWhat it is:\nTelegram-first multi-agent VAPT triage for security operators. It turns risky scanner steps into a gated workflow: verify ownership, lock scope, approve scan profile, charge credits, run tools, redact evidence, and deliver reports.\n\nWinning demo path:\n1) /demo — deterministic sandbox run, no external target needed\n2) /scan https://demo-owned-site.local — ownership challenge UX\n3) /status <job_id> — scope, credits, usage, severity summary\n4) /report <job_id> — PDF + JSON artifacts\n5) /pay — QRIS credit flow in sandbox mode\n\nWhat judges should notice:\n• not prompt-only: deterministic TypeScript orchestration\n• live Telegram UX with inline buttons and progress phases\n• safety gates for active web scans\n• public GitHub repo scan isolated from web target scope\n• report bundle includes scanner results + manual review priorities\n• Codex/GPT-5.6 used for vertical slices, tests, UX polish, docs, and submission package\n\nLocal test path:\nnpm install\nnpm run lint\nnpm run typecheck\nnpm test\nnpm run build\nnpm run demo`, { inline_keyboard: [[{ text: 'Run Demo / Sandbox', callback_data: 'demo' }], [{ text: 'Start Web Scan', callback_data: 'scan_help' }, { text: 'Repo Scan', callback_data: 'repo_help' }], [{ text: 'Menu', callback_data: 'menu' }]] });
+    return this.sendMessage(chatId, `🏁 ClawVAPT Judge Walkthrough\n\nCategory: Developer Tools\n\nWhat it is:\nTelegram-first multi-agent VAPT triage for security operators. It turns risky scanner steps into a gated workflow: verify ownership, lock scope, approve scan profile, charge credits, run tools, redact evidence, and deliver reports.\n\nWinning demo path:\n1) /demo — deterministic sandbox run, no external target needed\n2) /scan https://demo-owned-site.local — ownership challenge UX\n3) /status <job_id> — scope, credits, usage, severity summary\n4) /gpt_review <job_id> — GPT-5.6 advisory pack\n5) /report <job_id> — PDF + JSON artifacts\n6) /pay — QRIS credit flow in sandbox mode\n\nWhat judges should notice:\n• not prompt-only: deterministic TypeScript orchestration\n• live Telegram UX with inline buttons and progress phases\n• safety gates for active web scans\n• public GitHub repo scan isolated from web target scope\n• GPT-5.6 advisory pack turns findings into validation plans and remediation tickets\n• report bundle includes scanner results + manual review priorities\n• Codex/GPT-5.6 used for vertical slices, tests, UX polish, docs, and submission package\n\nLocal test path:\nnpm install\nnpm run lint\nnpm run typecheck\nnpm test\nnpm run build\nnpm run demo`, { inline_keyboard: [[{ text: 'Run Demo / Sandbox', callback_data: 'demo' }], [{ text: 'Start Web Scan', callback_data: 'scan_help' }, { text: 'Repo Scan', callback_data: 'repo_help' }], [{ text: 'Menu', callback_data: 'menu' }]] });
   }
 
   private async runDemo(chatId: string | number): Promise<void> {
@@ -336,6 +338,15 @@ export class TelegramBot {
     const top = items.slice(0, 6).map((item) => `• ${item.priority} ${item.area}: ${item.risk}`).join('\n');
     await this.sendMessage(chatId, `Manual review checklist ready\nJob: ${jobId}\n\nPriority areas:\n${top}\n\nUse authorized test accounts and safe test data only. Scanner results do not prove business-logic safety.`, jobButtons(jobId));
     await this.sendDocument(chatId, report.markdown, 'Manual review checklist');
+  }
+
+  private async gptReview(chatId: string | number, userId: string, jobId?: string): Promise<void> {
+    if (!jobId) return this.sendMessage(chatId, 'Usage: /gpt_review <job_id>', mainButtons());
+    await this.sendChatAction(chatId, 'upload_document');
+    const result = await this.orchestrator.gpt56Review(jobId, userId);
+    await this.sendMessage(chatId, `GPT-5.6 advisory pack ready\nJob: ${jobId}\nMode: ${result.mode}\nModel: ${result.model}\nNote: ${result.note}\n\nIncludes: executive readout, priority lane, validation plan, remediation tickets, demo notes, residual risk.`, jobButtons(jobId));
+    await this.sendDocument(chatId, result.markdown, 'GPT-5.6 advisory markdown');
+    await this.sendDocument(chatId, result.json, 'GPT-5.6 advisory JSON');
   }
 
   private async harden(chatId: string | number, jobId?: string): Promise<void> {
@@ -582,6 +593,8 @@ export class TelegramBot {
       { command: 'my_jobs', description: 'List persisted jobs' },
       { command: 'latest', description: 'Show latest job' },
       { command: 'report', description: 'Send latest report files' },
+      { command: 'manual_review', description: 'Send manual review checklist' },
+      { command: 'gpt_review', description: 'Generate GPT-5.6 advisory pack' },
       { command: 'pay', description: 'Create Pakasir payment' },
       { command: 'check_payment', description: 'Check Pakasir payment' },
       { command: 'summary', description: 'Show previous job results summary' },
@@ -658,8 +671,8 @@ function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function activeWebApproveButtons(jobId: string, profile: 'safe' | 'deep' = 'safe'): ReplyMarkup { const action = profile === 'deep' ? `deepweb:${jobId}` : `activeweb:${jobId}`; const label = profile === 'deep' ? 'I Agree + Approve Deep Scan' : 'I Agree + Approve Safe Scan'; return { inline_keyboard: [[{ text: label, callback_data: action }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function nmapApproveButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'I Agree + Approve Strict Nmap', callback_data: `nmapstrict:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
-function reportButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
-function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'Renew Verification', callback_data: `renew:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(1, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
+function reportButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'GPT-5.6 Review', callback_data: `gpt:${jobId}` }, { text: 'Manual Review', callback_data: `manual:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
+function jobButtons(jobId: string, orderId?: string): ReplyMarkup { const rows: InlineButton[][] = [[{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Report', callback_data: `report:${jobId}` }], [{ text: 'GPT-5.6 Review', callback_data: `gpt:${jobId}` }, { text: 'Manual Review', callback_data: `manual:${jobId}` }], [{ text: 'Renew Verification', callback_data: `renew:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]]; if (orderId) rows.splice(2, 0, [{ text: 'Check Payment', callback_data: `checkpay:${orderId}` }]); return { inline_keyboard: rows }; }
 function paymentButtons(orderId: string, _paymentUrl: string): ReplyMarkup { return { inline_keyboard: [[{ text: '✅ I Have Paid / Check Status', callback_data: `finishpay:${orderId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function paymentInstructionMessage(tx: { orderId: string; amount: number; method?: string; adminFee?: number; totalPayment?: number; expiredAt?: string; mode: string }): string {
   const adminFee = tx.adminFee ?? Math.max(0, (tx.totalPayment || tx.amount) - tx.amount);
@@ -680,7 +693,7 @@ function nextActionForJob(job: Job): string {
   if (job.repoUrl) return 'review report bundle, then validate top findings manually';
   if (!job.verified || !job.scopeLocked) return `/verify ${job.id}`;
   if (!job.findings.length) return `/web_scan ${job.id} or /web_scan_deep ${job.id}`;
-  return `/report ${job.id} or /manual_review ${job.id}`;
+  return `/gpt_review ${job.id}, /report ${job.id}, or /manual_review ${job.id}`;
 }
 function splitTelegramText(text: string): string[] { const max = 3900; if (text.length <= max) return [text]; const chunks: string[] = []; let rest = text; while (rest.length > max) { const cut = rest.lastIndexOf('\n', max); const idx = cut > 1000 ? cut : max; chunks.push(rest.slice(0, idx)); rest = rest.slice(idx).trimStart(); } if (rest) chunks.push(rest); return chunks; }
 function sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }

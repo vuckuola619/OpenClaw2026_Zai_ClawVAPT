@@ -23,7 +23,7 @@ The product is built around a multi-agent workflow:
 - BlueTeamHardeningReportAgent generates PDF, JSON, and manual-review reports.
 - MainOrchestrator enforces state, safety gates, audit logs, and Telegram UX.
 
-ClawVAPT supports active web checks, strict low-rate Nmap, standalone public GitHub repo scans, credit accounting, QRIS top-up simulation in sandbox mode, persistent jobs via SQLite, and optional OpenClaw advisory review through a sanitized bridge.
+ClawVAPT supports active web checks, strict low-rate Nmap, standalone public GitHub repo scans, credit accounting, QRIS top-up simulation in sandbox mode, persistent jobs via SQLite, a GPT-5.6 advisory pack command for operator triage, and optional OpenClaw advisory review through a sanitized bridge.
 
 ## GitHub Repository
 
@@ -48,6 +48,7 @@ Telegram bot: @capithon_bot
 ## AI Tools / Models Used
 
 - Codex with GPT-5.6: Build Week implementation partner for planning, coding, testing, documentation, demo assets, and final submission polish.
+- GPT-5.6 Advisor: optional runtime advisory pack that converts sanitized findings into validation plans, remediation tickets, executive readouts, and residual-risk notes.
 - TypeScript MultiAgentEngine: deterministic agent routing and workflow execution.
 - OpenClaw: runtime/operator environment and optional advisory bridge.
 - OpenClaw Codex advisory bridge: optional sanitized public-repo security review.
@@ -77,13 +78,15 @@ Inspect generated artifacts:
 
 - `reports/sample_report.pdf`
 - `reports/sample_report.json`
+- `reports/sample_gpt56_advisory.md`
+- `reports/sample_gpt56_advisory.json`
 - `logs/demo_audit.jsonl`
 - `docs/demo-transcript.md`
 
 Live sandbox demo:
 
 - Telegram bot: `@capithon_bot`
-- Use `/judge`, `/demo`, `/scan https://demo-owned-site.local`, `/verify <job_id>`, `/status <job_id>`, `/report <job_id>`, `/pay`.
+- Use `/judge`, `/demo`, `/scan https://demo-owned-site.local`, `/verify <job_id>`, `/status <job_id>`, `/gpt_review <job_id>`, `/report <job_id>`, `/pay`.
 - Payment completion is sandbox/demo mode; no real payment required for judging.
 
 Supported platforms: Node.js 22 on Linux/macOS, Telegram Bot API, PM2 for the live demo. Dockerfile and Compose are included.
@@ -97,6 +100,7 @@ Meaningful Build Week extension:
 - multi-agent workflow tightened around Trust, Red Team, and Blue Team roles
 - scan approval/progress UX in Telegram
 - judge walkthrough command and clearer Telegram command center UX
+- GPT-5.6 advisory pack command with deterministic fallback for judge testing without API secrets
 - public GitHub repo scan flow
 - Pakasir QRIS credit top-up path
 - SQLite persistence and audit evidence

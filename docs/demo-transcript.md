@@ -20,10 +20,11 @@ What this proves:
 /start
 /help
 /scan https://demo-owned-site.local/
-/verify JOB-34b22b0c
-/status JOB-34b22b0c
-/report JOB-34b22b0c
-/harden JOB-34b22b0c
+/verify JOB-941e3fc6
+/status JOB-941e3fc6
+/gpt_review JOB-941e3fc6
+/report JOB-941e3fc6
+/harden JOB-941e3fc6
 ```
 
 Expected result:
@@ -31,14 +32,15 @@ Expected result:
 - challenge instructions are shown before scan actions
 - verified job locks scope to the target host
 - status shows credits, scan usage, severity, and priority lane
+- GPT-5.6 advisory pack turns findings into validation plans and remediation tickets
 - report command returns PDF and JSON artifacts
 
 ## Payment Flow
 
 ```txt
 /pay
-/check_payment CLWV-20260721-2b0c
-/simulate_payment CLWV-20260721-2b0c
+/check_payment CLWV-20260721-3fc6
+/simulate_payment CLWV-20260721-3fc6
 ```
 
 Expected result:

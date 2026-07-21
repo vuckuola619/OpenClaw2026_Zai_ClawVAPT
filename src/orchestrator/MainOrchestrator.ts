@@ -12,6 +12,7 @@ import { MultiAgentEngine } from '../engine/MultiAgentEngine.js';
 import { ExternalSecurityToolRunner } from '../tools/ExternalSecurityToolRunner.js';
 import { ReportGenerator } from '../report/ReportGenerator.js';
 import { manualReviewChecklist, writeManualReview } from '../report/ManualReview.js';
+import { Gpt56Advisor, type Gpt56AdvisoryFiles } from '../ai/Gpt56Advisor.js';
 import { PakasirAdapter } from '../tools/PakasirAdapter.js';
 import { SecurityToolAdapters, type ToolRunResult, type RepoScanProfile } from '../tools/SecurityToolAdapters.js';
 import { ActiveWebScanner, type ActiveWebScanResult, type WebScanProfile } from '../tools/ActiveWebScanner.js';
@@ -335,6 +336,14 @@ export class MainOrchestrator {
     return writeManualReview(job);
   }
 
+  async gpt56Review(jobId: string, userId?: string): Promise<Gpt56AdvisoryFiles> {
+    const job = this.mustJob(jobId);
+    if (userId && job.userIdHash !== this.hashUser(userId)) throw new Error('JOB_NOT_FOUND');
+    const result = await new Gpt56Advisor().generate(job, this.scanRunsByJob.get(job.id) || [], manualReviewChecklist(job));
+    await this.audit.transition(job.id, job.userIdHash, 'BlueTeamHardeningReportAgent', job.state, 'GPT56_ADVISORY_READY', 'gpt56_advisory', 'Gpt56Advisor', result.mode === 'gpt-5.6' ? 'DONE' : 'MOCK', { findings: job.findings.length }, { mode: result.mode, model: result.model, note: result.note, markdown: result.markdown, json: result.json });
+    return result;
+  }
+
   manualReviewSummary(jobId: string) {
     const job = this.mustJob(jobId);
     return manualReviewChecklist(job);
@@ -399,7 +408,7 @@ export class MainOrchestrator {
   async writeTranscript(job: Job, reports: { json: string; pdf: string }) {
     await mkdir('docs', { recursive: true });
     const path = 'docs/demo-transcript.md';
-    await writeFile(path, `# ClawVAPT Demo Transcript\n\n## Judge Walkthrough\n\n\`\`\`txt\n/judge\n/demo\n\`\`\`\n\nWhat this proves:\n\n- deterministic sandbox path works without touching an external target\n- Telegram UX exposes the product flow through buttons and progress states\n- ownership, scope, credits, redaction, and reporting are enforced by backend code\n- generated artifacts are ready for judge inspection\n\n## Web Target Flow\n\n\`\`\`txt\n/start\n/help\n/scan ${job.targetUrl}\n/verify ${job.id}\n/status ${job.id}\n/report ${job.id}\n/harden ${job.id}\n\`\`\`\n\nExpected result:\n\n- challenge instructions are shown before scan actions\n- verified job locks scope to the target host\n- status shows credits, scan usage, severity, and priority lane\n- report command returns PDF and JSON artifacts\n\n## Payment Flow\n\n\`\`\`txt\n/pay\n/check_payment ${job.orderId}\n/simulate_payment ${job.orderId}\n\`\`\`\n\nExpected result:\n\n- QRIS payment card is generated\n- sandbox completion credits the account idempotently\n\nReports: ${reports.json}, ${reports.pdf}\nSafety: ownership verified, scope locked, explicit approvals required for active scans, secrets redacted.\n`);
+    await writeFile(path, `# ClawVAPT Demo Transcript\n\n## Judge Walkthrough\n\n\`\`\`txt\n/judge\n/demo\n\`\`\`\n\nWhat this proves:\n\n- deterministic sandbox path works without touching an external target\n- Telegram UX exposes the product flow through buttons and progress states\n- ownership, scope, credits, redaction, and reporting are enforced by backend code\n- generated artifacts are ready for judge inspection\n\n## Web Target Flow\n\n\`\`\`txt\n/start\n/help\n/scan ${job.targetUrl}\n/verify ${job.id}\n/status ${job.id}\n/gpt_review ${job.id}\n/report ${job.id}\n/harden ${job.id}\n\`\`\`\n\nExpected result:\n\n- challenge instructions are shown before scan actions\n- verified job locks scope to the target host\n- status shows credits, scan usage, severity, and priority lane\n- GPT-5.6 advisory pack turns findings into validation plans and remediation tickets\n- report command returns PDF and JSON artifacts\n\n## Payment Flow\n\n\`\`\`txt\n/pay\n/check_payment ${job.orderId}\n/simulate_payment ${job.orderId}\n\`\`\`\n\nExpected result:\n\n- QRIS payment card is generated\n- sandbox completion credits the account idempotently\n\nReports: ${reports.json}, ${reports.pdf}\nSafety: ownership verified, scope locked, explicit approvals required for active scans, secrets redacted.\n`);
     return path;
   }
 

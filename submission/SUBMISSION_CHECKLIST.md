@@ -14,6 +14,7 @@
 - [x] Live/sandbox test path: Telegram bot `@capithon_bot`
 - [x] Judge walkthrough command: `/judge`
 - [x] Sample report artifacts
+- [x] GPT-5.6 advisory artifact: `reports/sample_gpt56_advisory.md`
 - [x] Codex/GPT-5.6 collaboration notes
 - [ ] `/feedback` Codex session ID pasted into Devpost form
 

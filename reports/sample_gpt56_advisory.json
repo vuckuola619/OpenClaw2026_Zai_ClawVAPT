@@ -1,0 +1,151 @@
+{
+  "job_id": "JOB-941e3fc6",
+  "generated_at": "2026-07-21T20:14:45.441Z",
+  "mode": "deterministic",
+  "model": "gpt-5.6",
+  "note": "GPT56_ADVISOR_ENABLED is not true; generated deterministic advisory.",
+  "redaction_applied": true,
+  "advisory_markdown": "# GPT-5.6 Advisory Pack — JOB-941e3fc6\n\nMode: deterministic fallback\nNote: GPT56_ADVISOR_ENABLED is not true; generated deterministic advisory.\n\n## Executive Readout\n\nClawVAPT found 9 prioritized findings in this report view. Severity C/H/M/L/I: 0/3/2/3/1.\n\n## Priority Lane\n\nP2: fix high-risk issues before production promotion.\n\n## Validation Plan\n\n1. Authorization / IDOR: User accesses or modifies another user's object by changing IDs, slugs, UUIDs, or ownership fields.\n   Tests: Create two low-privilege accounts A/B. Capture read/update/delete requests for A-owned resources. Replace object identifiers with B-owned identifiers. Verify server-side ownership checks on every endpoint, not only UI routes.\n2. Business workflow bypass: User skips required steps such as verification, approval, payment, MFA, or onboarding.\n   Tests: Map required workflow states. Attempt direct final-step request before prerequisites. Replay old valid requests after state changes. Test duplicate submission and one-time action reuse.\n3. Tenant isolation: Cross-tenant data exposure through shared IDs, search, exports, reports, or background jobs.\n   Tests: Create two tenants/orgs with similar data. Test list/search/export/report endpoints across tenants. Check background jobs and webhooks for tenant scoping. Verify DB queries include tenant constraints.\n\n## Remediation Tickets\n\n1. HIGH: Runtime .env exists in workspace\n   Fix: Review evidence, patch safely, and retest before closing.\n   Validate: reproduce safely in authorized scope, apply fix, rerun relevant scan/profile.\n2. HIGH: Potential unsafe GitHub Actions trigger\n   Fix: Review evidence, patch safely, and retest before closing.\n   Validate: reproduce safely in authorized scope, apply fix, rerun relevant scan/profile.\n3. HIGH: Secret-like pattern redacted\n   Fix: Review evidence, patch safely, and retest before closing.\n   Validate: reproduce safely in authorized scope, apply fix, rerun relevant scan/profile.\n\n## Demo Notes\n\nShow /judge, /demo, /status, /report, and /gpt_review. Emphasize that GPT-5.6 advisory is safe, redacted, and advisory-only.\n\n## Residual Risk\n\nScanner output is not proof of business-logic safety. Keep manual validation gates before client-facing closure.\n",
+  "input": {
+    "project": "ClawVAPT",
+    "job": {
+      "id": "JOB-941e3fc6",
+      "state": "SEND_TELEGRAM_SUMMARY",
+      "target_url": "https://demo-owned-site.local/",
+      "repo_url": null,
+      "repo_commit": null,
+      "verified": true,
+      "scope_locked": true,
+      "scope_host": "demo-owned-site.local"
+    },
+    "severity": {
+      "INFO": 1,
+      "LOW": 3,
+      "MEDIUM": 2,
+      "HIGH": 3,
+      "CRITICAL": 0
+    },
+    "scan_runs": [],
+    "top_findings": [
+      {
+        "id": "REPO-ENV-COMMITTED",
+        "title": "Runtime .env exists in workspace",
+        "severity": "HIGH",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": ".env present locally; ensure not committed and never exposed.",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "REPO-GHA-UNSAFE",
+        "title": "Potential unsafe GitHub Actions trigger",
+        "severity": "HIGH",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": "pull_request_target requires careful permission scoping.",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "REPO-SECRET-LIKE",
+        "title": "Secret-like pattern redacted",
+        "severity": "HIGH",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": "Potential secret-like assignment detected in src/tools/SecurityToolAdapters.ts",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "URL-CSP-MISSING",
+        "title": "Missing Content-Security-Policy",
+        "severity": "MEDIUM",
+        "status": "OPEN",
+        "source": "BUILTIN_URL",
+        "description": "Demo fixture indicates CSP header is absent.",
+        "remediation": "Add secure defaults and verify with retest before marking fixed."
+      },
+      {
+        "id": "REPO-DOCKER-ROOT",
+        "title": "Dockerfile may run as root",
+        "severity": "MEDIUM",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": "Dockerfile has no USER directive.",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "URL-SERVER-DISCLOSURE",
+        "title": "Server header disclosure",
+        "severity": "LOW",
+        "status": "OPEN",
+        "source": "BUILTIN_URL",
+        "description": "Demo fixture indicates server header exists; value redacted.",
+        "remediation": "Add secure defaults and verify with retest before marking fixed."
+      },
+      {
+        "id": "REPO-DEPENDABOT-MISSING",
+        "title": "Missing Dependabot config",
+        "severity": "LOW",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": "Dependency update automation absent.",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "REPO-DOCKER-HEALTHCHECK",
+        "title": "Dockerfile missing HEALTHCHECK",
+        "severity": "LOW",
+        "status": "OPEN",
+        "source": "BUILTIN_REPO",
+        "description": "Dockerfile has no HEALTHCHECK.",
+        "remediation": "Review evidence, patch safely, and retest before closing."
+      },
+      {
+        "id": "URL-ENV-CHECK",
+        "title": "Exposed .env check performed",
+        "severity": "INFO",
+        "status": "OPEN",
+        "source": "BUILTIN_URL",
+        "description": "Only status was checked; content was never fetched or dumped.",
+        "remediation": "Add secure defaults and verify with retest before marking fixed."
+      }
+    ],
+    "manual_review_p1": [
+      {
+        "area": "Authorization / IDOR",
+        "risk": "User accesses or modifies another user's object by changing IDs, slugs, UUIDs, or ownership fields.",
+        "test_plan": [
+          "Create two low-privilege accounts A/B.",
+          "Capture read/update/delete requests for A-owned resources.",
+          "Replace object identifiers with B-owned identifiers.",
+          "Verify server-side ownership checks on every endpoint, not only UI routes."
+        ]
+      },
+      {
+        "area": "Business workflow bypass",
+        "risk": "User skips required steps such as verification, approval, payment, MFA, or onboarding.",
+        "test_plan": [
+          "Map required workflow states.",
+          "Attempt direct final-step request before prerequisites.",
+          "Replay old valid requests after state changes.",
+          "Test duplicate submission and one-time action reuse."
+        ]
+      },
+      {
+        "area": "Tenant isolation",
+        "risk": "Cross-tenant data exposure through shared IDs, search, exports, reports, or background jobs.",
+        "test_plan": [
+          "Create two tenants/orgs with similar data.",
+          "Test list/search/export/report endpoints across tenants.",
+          "Check background jobs and webhooks for tenant scoping.",
+          "Verify DB queries include tenant constraints."
+        ]
+      }
+    ],
+    "constraints": [
+      "authorized testing only",
+      "no exploitation instructions",
+      "no secret disclosure",
+      "manual validation required before closure"
+    ]
+  }
+}

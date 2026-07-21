@@ -1,6 +1,6 @@
 {
-  "job_id": "JOB-34b22b0c",
-  "generated_at": "2026-07-21T19:55:58.816Z",
+  "job_id": "JOB-941e3fc6",
+  "generated_at": "2026-07-21T20:14:45.252Z",
   "target": {
     "web_url": "https://demo-owned-site.local/",
     "repo_url": null,
@@ -11,7 +11,7 @@
     "scope_locked": true,
     "scope_host": "demo-owned-site.local",
     "verification_method": "demo",
-    "verified_at": "2026-07-21T19:55:58.367Z"
+    "verified_at": "2026-07-21T20:14:44.825Z"
   },
   "scan_runs": [],
   "executive_summary": {
