@@ -12,6 +12,14 @@ It verifies web target ownership, locks scan scope, checks credits, runs safe we
 
 Watch the demo: https://youtu.be/mupug2vA5Ys
 
+## Build Week Submission
+
+- Track: Developer Tools
+- Live demo: Telegram bot `@capithon_bot`
+- Repository: https://github.com/vuckuola619/OpenClaw2026_Zai_ClawVAPT
+- Demo video: https://youtu.be/mupug2vA5Ys
+- Judge test path: run the local deterministic demo with `npm run demo`, or use the live Telegram bot in sandbox mode.
+
 ## Pitch Deck
 
 Jury deck: [`submission/OpenClaw2026_Zai_ClawVAPT_Jury_Deck.pdf`](submission/OpenClaw2026_Zai_ClawVAPT_Jury_Deck.pdf)
@@ -205,11 +213,28 @@ openclaw-workspace/agents/
 
 | Tool | Role |
 |---|---|
+| Codex with GPT-5.6 | Build Week implementation partner for product planning, code changes, tests, docs, demo assets, and submission polish. |
 | TypeScript MultiAgentEngine | Deterministic product agent loop and tool routing. |
 | OpenClaw | Operator runtime and optional advisory bridge. |
-| OpenClaw Codex GPT-5.5 advisory review | Optional sanitized public-repo security review. |
+| OpenClaw Codex advisory bridge | Optional sanitized public-repo security review path. |
 | Security scanner adapters | Tool calls for web/repo checks. |
 | Pakasir QRIS | Payment and credit workflow. |
+
+---
+
+## Build Week Work Added
+
+ClawVAPT existed as a security-operator idea before submission, then was meaningfully extended during Build Week with Codex-assisted implementation and hardening:
+
+- Telegram-first scan UX with inline buttons, explicit approval gates, and progress messages.
+- Persistent SQLite jobs, credit accounting, orders, scan runs, and report records.
+- Standalone public GitHub repo scan flow with one-scan-per-repo/account guardrails.
+- Active web safe/deep scan approvals, strict low-rate Nmap profile, and scan-run limits.
+- Pakasir QRIS sandbox/live-ready credit top-up flow with idempotent crediting.
+- PDF/JSON/manual-review report bundle generation and redacted audit logging.
+- Submission evidence: README, demo script, demo transcript, pitch deck, sample reports, and final smoke test notes.
+
+Codex/GPT-5.6 accelerated the work by turning the product spec into vertical slices, adding tests around security boundaries, tightening Telegram UX, and aligning this README/submission package with the official Build Week requirements.
 
 ---
 
@@ -235,6 +260,8 @@ reports/sample_report.json
 logs/demo_audit.jsonl
 docs/demo-transcript.md
 ```
+
+No Telegram token is required for the deterministic local demo.
 
 ---
 
@@ -264,6 +291,50 @@ docker compose build
 docker compose up -d
 docker compose logs --tail=200
 ```
+
+Supported platforms:
+
+- Local development: Linux/macOS with Node.js 22.
+- Production demo: Linux server with PM2 and Telegram Bot API access.
+- Container path: Dockerfile and Compose are included; Docker runtime verification depends on the host having Docker installed.
+
+---
+
+## Judge Testing Instructions
+
+Fast local test:
+
+```bash
+npm install
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run demo
+```
+
+Artifacts to inspect after `npm run demo`:
+
+```txt
+reports/sample_report.pdf
+reports/sample_report.json
+logs/demo_audit.jsonl
+docs/demo-transcript.md
+```
+
+Live bot test:
+
+```txt
+/start
+/demo
+/scan https://demo-owned-site.local
+/verify <job_id>
+/web_scan <job_id>
+/repo_scan https://github.com/vuckuola619/sehatai-health-companion
+/pay
+```
+
+The live bot runs in sandbox/demo mode for judging, so payment completion can be simulated from the Telegram button without real money.
 
 ---
 

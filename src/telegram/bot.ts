@@ -7,11 +7,81 @@ import { helpText } from './commands.js';
 import { severitySummary } from '../report/ReportGenerator.js';
 import { DEEP_SCAN_COST, REPO_SCAN_COST, SAFE_SCAN_COST } from '../core/QuotaStore.js';
 
+// --- Progress helpers ---
+
+function progressBar(current: number, total: number, width = 10): string {
+  if (total <= 0) return `[${'█'.repeat(width)}] 100%`;
+  const pct = Math.round((current / total) * 100);
+  const filled = Math.round((current / total) * width);
+  return `[${'█'.repeat(filled)}${'░'.repeat(width - filled)}] ${pct}%`;
+}
+
+type ProgressPhase = { label: string; icon: string };
+
+class ProgressTracker {
+  private chatId: string | number;
+  private msgId: number | null = null;
+  private current = 0;
+  private total: number;
+  private phases: ProgressPhase[];
+  private title: string;
+  private jobId: string;
+
+  constructor(chatId: string | number, title: string, jobId: string, phases: ProgressPhase[]) {
+    this.chatId = chatId;
+    this.title = title;
+    this.jobId = jobId;
+    this.total = phases.length;
+    this.phases = phases;
+  }
+
+  render(): string {
+    const bar = progressBar(this.current, this.total);
+    const phase = this.phases[this.current];
+    const lines = [`🔍 ${this.title}`, `Job: ${this.jobId}`, '', bar, ''];
+    for (let i = 0; i < this.phases.length; i++) {
+      const p = this.phases[i];
+      if (i < this.current) lines.push(`✅ ${p.icon} ${p.label}`);
+      else if (i === this.current) lines.push(`⏳ ${p.icon} ${p.label} ...`);
+      else lines.push(`⬜ ${p.icon} ${p.label}`);
+    }
+    return lines.join('\n');
+  }
+
+  async init(send: (text: string) => Promise<number>): Promise<void> {
+    this.msgId = await send(this.render());
+  }
+
+  async advance(edit: (msgId: number, text: string) => Promise<void>): Promise<void> {
+    if (this.current >= this.total) return;
+    this.current++;
+    if (this.msgId !== null) {
+      try { await edit(this.msgId, this.render()); } catch (_) { /* best effort */ }
+    }
+  }
+
+  async complete(edit: (msgId: number, text: string) => Promise<void>): Promise<void> {
+    this.current = this.total;
+    if (this.msgId !== null) {
+      try { await edit(this.msgId, this.render()); } catch (_) { /* best effort */ }
+    }
+  }
+}
+
 type InlineButton = { text: string; callback_data?: string; url?: string };
 type TelegramMessage = { message_id: number; chat: { id: number | string }; from?: { id: number | string }; text?: string };
 type TelegramUpdate = { update_id: number; message?: TelegramMessage; callback_query?: { id: string; data?: string; message?: TelegramMessage; from: { id: number | string } } };
 
 type ReplyMarkup = { inline_keyboard: InlineButton[][] };
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
 export class TelegramBot {
   private offset = 0;
@@ -32,6 +102,7 @@ export class TelegramBot {
     const [cmd, ...args] = text.trim().split(/\s+/);
     try {
       this.limiter.assertAllowed(userId, cmd === '/scan' || cmd === '/web_scan_deep' ? 3 : 1);
+      void this.sendChatAction(chatId);
       if (cmd === '/start' || cmd === '/menu') return this.sendMainMenu(chatId);
       if (cmd === '/help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (cmd === '/demo') return this.runDemo(chatId);
@@ -69,6 +140,7 @@ export class TelegramBot {
     await this.answerCallback(queryId);
     try {
       this.limiter.assertAllowed(userId, data.startsWith('run:') || data.startsWith('activeweb:') || data.startsWith('deepweb:') || data === 'scan_demo' ? 3 : 1);
+      void this.sendChatAction(chatId);
       if (data === 'menu') return this.sendMainMenu(chatId);
       if (data === 'help') return this.sendMessage(chatId, helpText(), mainButtons());
       if (data === 'scan_help') return this.sendMessage(chatId, 'Website scan flow:\n/scan https://app.example.com\n/verify JOB-xxxx\n/web_scan JOB-xxxx\n/web_scan_deep JOB-xxxx\n/nmap_scan JOB-xxxx\n\nDifference:\n• Run Safe Scan: basic combined safe workflow/report gate.\n• Active Web Safe: low-noise headers + safe Nuclei templates. Cost 5.\n• Active Web Deep: deeper non-destructive CVE/KEV/injection + controlled Nikto. Cost 10.\n• Strict Nmap: single-host low-rate port discovery only. Cost 5.', mainButtons());
@@ -116,7 +188,7 @@ export class TelegramBot {
           if (update.callback_query?.message) await this.handleCallback(update.callback_query.id, update.callback_query.message.chat.id, String(update.callback_query.from.id), update.callback_query.data);
         }
       } catch (error) {
-        console.error('telegram polling error:', formatSafeError(error));
+        console.error('telegram polling error:', error instanceof Error ? error.message : formatSafeError(error));
         await sleep(3000);
       }
     }
@@ -166,10 +238,25 @@ export class TelegramBot {
   private async runScan(chatId: string | number, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
     if (!(await this.checkScanLimit(chatId, jobId))) return;
-    await this.sendMessage(chatId, `Running safe scan for ${jobId}...\nEstimated time: 1-3 minutes.\nCost: -${SAFE_SCAN_COST} credits`);
+    await this.sendChatAction(chatId);
+    const phases: ProgressPhase[] = [
+      { label: 'Initializing engine', icon: '🔧' },
+      { label: 'Running trust verification', icon: '🛡️' },
+      { label: 'Scanning target', icon: '🔍' },
+      { label: 'Running red team analysis', icon: '🔴' },
+      { label: 'Running blue team review', icon: '🔵' },
+      { label: 'Generating report', icon: '📄' },
+    ];
+    const progress = new ProgressTracker(chatId, 'Safe Scan', jobId, phases);
+    await progress.init((text) => this.sendProgressMessage(chatId, text));
     try {
       const before = this.orchestrator.getJob(jobId)?.credits;
+      await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
       const result = await this.orchestrator.runApprovedScan(jobId);
+      await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+      await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+      await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+      await progress.complete((mid, text) => this.editMessage(chatId, mid, text));
       const after = result.job.credits;
       await this.sendMessage(chatId, `✅ Scan complete\nEngine: MultiAgentEngine\nAgents: Trust → RedTeam → BlueTeam\nJob: ${jobId}\nCredits: -${before !== undefined ? before - after : SAFE_SCAN_COST} → ${after} remaining\nFindings: ${result.job.findings.length}\nCorrelations: ${result.correlations.length}`, jobButtons(jobId, result.job.orderId));
       await this.sendDocument(chatId, result.reports.pdf, 'PDF report');
@@ -304,10 +391,31 @@ export class TelegramBot {
       return;
     }
     if (!(await this.ensureCredits(chatId, userId, REPO_SCAN_COST, 'public GitHub repo scan'))) return;
+    await this.sendChatAction(chatId);
     const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
-    const estimate = profile === 'deep' ? '8-20 minutes depending on repo size and dependency checks.' : '3-10 minutes depending on repo size and tool availability.';
-    await this.sendMessage(chatId, `Running standalone public GitHub ${profile} scan...\nRepo: ${repoUrl}\nEstimated time: ${estimate}\nCost: -${REPO_SCAN_COST} credits\nCredits before: ${before}\nLimit: 1 scan per repo per account.`);
+    const jobId = `REPO-${Date.now().toString(36).toUpperCase()}`;
+    const phases: ProgressPhase[] = profile === 'deep' ? [
+      { label: 'Cloning repository', icon: '📥' },
+      { label: 'Scanning secrets', icon: '🔑' },
+      { label: 'Running SAST analysis', icon: '🔬' },
+      { label: 'Checking dependencies', icon: '📦' },
+      { label: 'Container analysis', icon: '🐳' },
+      { label: 'AI code review', icon: '🤖' },
+      { label: 'Correlating findings', icon: '🧠' },
+      { label: 'Generating reports', icon: '📄' },
+    ] : [
+      { label: 'Cloning repository', icon: '📥' },
+      { label: 'Scanning secrets', icon: '🔑' },
+      { label: 'Running SAST analysis', icon: '🔬' },
+      { label: 'Checking dependencies', icon: '📦' },
+      { label: 'Correlating findings', icon: '🧠' },
+      { label: 'Generating reports', icon: '📄' },
+    ];
+    const progress = new ProgressTracker(chatId, `Repo ${profile.toUpperCase()} Scan`, jobId, phases);
+    await progress.init((text) => this.sendProgressMessage(chatId, text));
     const { job, result, reports } = await this.orchestrator.runStandaloneRepoSecuritySuite(userId, repoUrl, profile);
+    for (let i = 0; i < phases.length - 1; i++) await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+    await progress.complete((mid, text) => this.editMessage(chatId, mid, text));
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No findings from available tools.';
     const q = this.orchestrator.quotaSnapshotForUser(userId);
     const ai = result.tools.find((t) => t.name === 'OpenClawCodexGPT55Review');
@@ -359,9 +467,20 @@ export class TelegramBot {
   private async runStrictNmapScan(chatId: string | number, userId: string, jobId?: string): Promise<void> {
     if (!jobId) return this.sendMessage(chatId, 'Missing job id.', mainButtons());
     if (!(await this.ensureCredits(chatId, userId, SAFE_SCAN_COST, 'strict Nmap scan'))) return;
+    await this.sendChatAction(chatId);
     const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
-    await this.sendMessage(chatId, `Approved. Running strict Nmap profile for ${jobId}...\nEstimated time: 1-3 minutes depending on network latency and open ports.\nCost: -${SAFE_SCAN_COST} credits\nCredits before: ${before}`);
+    const phases: ProgressPhase[] = [
+      { label: 'Initializing Nmap', icon: '🔧' },
+      { label: 'Scanning TCP ports', icon: '📡' },
+      { label: 'Analyzing open ports', icon: '🧠' },
+      { label: 'Generating results', icon: '📄' },
+    ];
+    const progress = new ProgressTracker(chatId, 'Nmap Port Scan', jobId, phases);
+    await progress.init((text) => this.sendProgressMessage(chatId, text));
     const result = await this.orchestrator.runStrictNmapScan(jobId, userId, true);
+    await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+    await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+    await progress.complete((mid, text) => this.editMessage(chatId, mid, text));
     const after = this.orchestrator.quotaSnapshotForUser(userId).credits;
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || 'No open ports found in strict profile.';
     await this.sendMessage(chatId, `Strict Nmap scan complete\nTarget: ${result.targetUrl}\nProfile: NMAP-STRICT\nCredits: -${before - after} → ${after} remaining\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}`, jobButtons(jobId));
@@ -372,10 +491,28 @@ export class TelegramBot {
     if (!(await this.checkScanLimit(chatId, jobId))) return;
     const cost = profile === 'deep' ? DEEP_SCAN_COST : SAFE_SCAN_COST;
     if (!(await this.ensureCredits(chatId, userId, cost, `active web ${profile} scan`))) return;
+    await this.sendChatAction(chatId);
     const before = this.orchestrator.quotaSnapshotForUser(userId).credits;
-    const estimate = profile === 'deep' ? '5-15 minutes depending on target speed, WAF/rate limits, and installed scanners.' : '1-3 minutes for low-noise header + safe template checks.';
-    await this.sendMessage(chatId, `Approved. Running active web ${profile} profile for ${jobId}...\nEstimated time: ${estimate}\nCost: -${cost} credits\nCredits before: ${before}`);
+    const phases: ProgressPhase[] = profile === 'deep' ? [
+      { label: 'Initializing deep scan', icon: '🔧' },
+      { label: 'Checking security headers', icon: '🔒' },
+      { label: 'Running Nuclei templates', icon: '🔬' },
+      { label: 'Running Nikto assessment', icon: '🕷️' },
+      { label: 'CVE/KEV correlation', icon: '💀' },
+      { label: 'Analyzing findings', icon: '🧠' },
+      { label: 'Generating reports', icon: '📄' },
+    ] : [
+      { label: 'Initializing safe scan', icon: '🔧' },
+      { label: 'Checking security headers', icon: '🔒' },
+      { label: 'Running Nuclei templates', icon: '🔬' },
+      { label: 'Analyzing findings', icon: '🧠' },
+      { label: 'Generating reports', icon: '📄' },
+    ];
+    const progress = new ProgressTracker(chatId, `Active Web ${profile.toUpperCase()} Scan`, jobId, phases);
+    await progress.init((text) => this.sendProgressMessage(chatId, text));
     const result = await this.orchestrator.runActiveWebScan(jobId, userId, true, profile);
+    for (let i = 0; i < phases.length - 1; i++) await progress.advance((mid, text) => this.editMessage(chatId, mid, text));
+    await progress.complete((mid, text) => this.editMessage(chatId, mid, text));
     const top = result.findings.slice(0, 10).map((f) => `• ${f.severity} ${f.title}`).join('\n') || `No findings from ${profile} web profile.`;
     const q = this.orchestrator.quotaSnapshotForUser(userId);
     await this.sendMessage(chatId, `Active web scan complete\nTarget: ${result.targetUrl}\nProfile: ${result.profile.toUpperCase()}\nCredits: -${before - q.credits} → ${q.credits} remaining\nApproval: ${result.approval}\nTools: ${result.tools.length}\nFindings: ${result.findings.length}\n\nTop findings:\n${top}\n\nSending PDF, JSON, and manual review report now.`, reportButtons(jobId));
@@ -447,21 +584,39 @@ export class TelegramBot {
   }
 
   private async sendMessage(chatId: string | number, text: string, reply_markup?: ReplyMarkup): Promise<void> {
-    const chunks = splitTelegramText(text);
-    for (let i = 0; i < chunks.length; i++) await this.api('sendMessage', { chat_id: chatId, text: chunks[i], reply_markup: i === chunks.length - 1 ? reply_markup : undefined, disable_web_page_preview: true });
+    const chunks = splitTelegramText(escapeHtml(text));
+    for (let i = 0; i < chunks.length; i++) await this.api('sendMessage', { chat_id: chatId, text: chunks[i], parse_mode: 'HTML', reply_markup: i === chunks.length - 1 ? reply_markup : undefined, disable_web_page_preview: true });
+  }
+
+  private async sendChatAction(chatId: string | number, action: 'typing' | 'upload_document' | 'upload_photo' = 'typing'): Promise<void> {
+    try { await this.api('sendChatAction', { chat_id: chatId, action }); } catch (_) { /* best effort */ }
+  }
+
+  private async sendProgressMessage(chatId: string | number, text: string): Promise<number> {
+    const res = await this.api<{ message_id: number }>('sendMessage', { chat_id: chatId, text: escapeHtml(text), parse_mode: 'HTML', disable_web_page_preview: true });
+    return res.message_id;
+  }
+
+  private async editMessage(chatId: string | number, messageId: number, text: string): Promise<void> {
+    try { await this.api('editMessageText', { chat_id: chatId, message_id: messageId, text: escapeHtml(text), parse_mode: 'HTML', disable_web_page_preview: true }); } catch (_) { /* best effort — message may be older than 48h */ }
+  }
+
+  private async deleteMessage(chatId: string | number, messageId: number): Promise<void> {
+    try { await this.api('deleteMessage', { chat_id: chatId, message_id: messageId }); } catch (_) { /* best effort */ }
   }
 
   private async sendDocument(chatId: string | number, path: string, caption: string): Promise<void> {
     const data = await readFile(path);
     const form = new FormData();
     form.set('chat_id', String(chatId));
-    form.set('caption', caption);
+    form.set('caption', escapeHtml(caption));
+    form.set('parse_mode', 'HTML');
     form.set('document', new Blob([data]), basename(path));
     await this.rawApi('sendDocument', form);
   }
 
   private async sendPhoto(chatId: string | number, photo: string, caption: string, reply_markup?: ReplyMarkup): Promise<void> {
-    await this.api('sendPhoto', { chat_id: chatId, photo, caption, reply_markup });
+    await this.api('sendPhoto', { chat_id: chatId, photo, caption: escapeHtml(caption), parse_mode: 'HTML', reply_markup });
   }
 
   private async answerCallback(callbackQueryId: string): Promise<void> { await this.api('answerCallbackQuery', { callback_query_id: callbackQueryId }); }
@@ -469,14 +624,14 @@ export class TelegramBot {
   private async api<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     const json = await res.json() as T & { ok?: boolean; description?: string };
-    if (!res.ok || json.ok === false) throw new Error(json.description || `Telegram API ${method} failed`);
+    if (!res.ok || json.ok === false) throw new Error(`Telegram API ${method} failed: ${json.description || res.status}`);
     return json;
   }
 
   private async rawApi<T = unknown>(method: string, body: BodyInit): Promise<T> {
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, { method: 'POST', body });
     const json = await res.json() as T & { ok?: boolean; description?: string };
-    if (!res.ok || json.ok === false) throw new Error(json.description || `Telegram API ${method} failed`);
+    if (!res.ok || json.ok === false) throw new Error(`Telegram API ${method} failed: ${json.description || res.status}`);
     return json;
   }
 }
@@ -489,7 +644,7 @@ export async function startTelegramBot(): Promise<TelegramBot> {
   return bot;
 }
 
-function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '➕ New Web Target', callback_data: 'scan_help' }, { text: '🔗 GitHub Repo Scan', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📊 Job Summary', callback_data: 'summary' }], [{ text: '🧪 Scan Commands', callback_data: 'tools' }, { text: '📄 Reports', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Pay / Top Up', callback_data: 'pay' }], [{ text: '❔ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
+function mainButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: '🔍 Start New Web Scan', callback_data: 'scan_help' }, { text: '📦 Repo Scan', callback_data: 'repo_help' }], [{ text: '📋 My Jobs', callback_data: 'my_jobs' }, { text: '📈 Job Summary', callback_data: 'summary' }], [{ text: '🧭 Scan Commands', callback_data: 'tools' }, { text: '📄 Reports', callback_data: 'report_help' }], [{ text: '⚡ Latest Job', callback_data: 'latest' }, { text: '💳 Add Credits', callback_data: 'pay' }], [{ text: '❓ Help', callback_data: 'help' }, { text: '🏖 Demo / Sandbox', callback_data: 'demo' }]] }; }
 function toolsButtons(): ReplyMarkup { return { inline_keyboard: [[{ text: 'Tools Status', callback_data: 'tools' }, { text: 'GitHub Scan Usage', callback_data: 'repo_scan' }], [{ text: 'Strict Nmap Usage', callback_data: 'scan_help' }], [{ text: 'Menu', callback_data: 'menu' }]] }; }
 function verifyButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Show Challenge', callback_data: `challenge:${jobId}` }, { text: 'Verify Ownership', callback_data: `verify:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }, { text: 'Menu', callback_data: 'menu' }]] }; }
 function runButtons(jobId: string): ReplyMarkup { return { inline_keyboard: [[{ text: 'Run Safe Scan', callback_data: `run:${jobId}` }, { text: 'Active Web Safe', callback_data: `webpreview:${jobId}` }], [{ text: 'Active Web Deep', callback_data: `deeppreview:${jobId}` }, { text: 'Strict Nmap', callback_data: `nmappreview:${jobId}` }], [{ text: 'Status', callback_data: `status:${jobId}` }], [{ text: 'Menu', callback_data: 'menu' }]] }; }

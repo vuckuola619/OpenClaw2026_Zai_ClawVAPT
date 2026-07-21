@@ -1,20 +1,20 @@
 # Final Smoke Test
 
-Date: 2026-05-15 UTC
+Date: 2026-07-21 UTC
 
 ## Passed
 
 - `npm run lint` — passed
 - `npm run typecheck` — passed
+- `npm test` — passed, 47/47 tests
 - `npm run build` — passed
-- targeted tests: `tests/core.test.ts tests/telegram.test.ts` — 8/8 passed
 - PM2 app `clawthon` — online
 - GitHub repo — public
 - Pitch deck PDF — 5 pages
 
 ## Notes
 
-Full `npm test` hits a timeout in the broader historical suite after core tests, likely due long-running/e2e-style tests. Final smoke uses targeted core + Telegram tests plus build/typecheck/lint.
+Full `npm test` is intentionally slower because quota/scope and repo security tests exercise realistic flows. Latest run passed all 47 tests locally.
 
 ## Public Repository
 

@@ -1,6 +1,6 @@
 {
-  "job_id": "JOB-563370a9",
-  "generated_at": "2026-05-15T15:18:29.950Z",
+  "job_id": "JOB-8b6681ab",
+  "generated_at": "2026-07-21T19:35:05.406Z",
   "target": {
     "web_url": "https://demo-owned-site.local/",
     "repo_url": null,
@@ -11,7 +11,7 @@
     "scope_locked": true,
     "scope_host": "demo-owned-site.local",
     "verification_method": "demo",
-    "verified_at": "2026-05-15T15:18:29.534Z"
+    "verified_at": "2026-07-21T19:35:04.136Z"
   },
   "scan_runs": [],
   "severity_summary": {
@@ -224,23 +224,6 @@
       ]
     },
     {
-      "id": "REPO-SECRET-LIKE",
-      "title": "Secret-like pattern redacted",
-      "severity": "HIGH",
-      "status": "OPEN",
-      "description": "Potential secret-like value detected: GITHUB_[REDACTED]\nGITHUB_OWNER=vuckuola619\nGITHUB_REPO=clawthon\n\nPAYMENT_PROVIDE",
-      "remediation": "Review evidence, patch safely, and retest before closing.",
-      "source": "BUILTIN_REPO",
-      "evidence": [
-        {
-          "type": "file",
-          "path": ".env",
-          "summary": "Potential secret-like value detected: GITHUB_[REDACTED]\nGITHUB_OWNER=vuckuola619\nGITHUB_REPO=clawthon\n\nPAYMENT_PROVIDE",
-          "redacted": true
-        }
-      ]
-    },
-    {
       "id": "REPO-GHA-UNSAFE",
       "title": "Potential unsafe GitHub Actions trigger",
       "severity": "HIGH",
@@ -253,6 +236,23 @@
           "type": "file",
           "path": "src/tools/RepoScanner.ts",
           "summary": "pull_request_target requires careful permission scoping.",
+          "redacted": true
+        }
+      ]
+    },
+    {
+      "id": "REPO-SECRET-LIKE",
+      "title": "Secret-like pattern redacted",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "description": "Potential secret-like assignment detected in src/tools/SecurityToolAdapters.ts",
+      "remediation": "Review evidence, patch safely, and retest before closing.",
+      "source": "BUILTIN_REPO",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/tools/SecurityToolAdapters.ts",
+          "summary": "Potential secret-like assignment detected in src/tools/SecurityToolAdapters.ts",
           "redacted": true
         }
       ]
@@ -431,7 +431,7 @@
         "callback replay result",
         "credit ledger entries"
       ],
-      "priority": "P1"
+      "priority": "P2"
     },
     {
       "area": "Tenant isolation",
@@ -491,7 +491,6 @@
   "manual_review_priorities": [
     "P1: Authorization / IDOR",
     "P1: Business workflow bypass",
-    "P1: Payment / quota / credit integrity",
     "P1: Tenant isolation",
     "P1: verify secret rotation and blast radius manually."
   ],
