@@ -20,11 +20,11 @@ What this proves:
 /start
 /help
 /scan https://demo-owned-site.local/
-/verify JOB-941e3fc6
-/status JOB-941e3fc6
-/gpt_review JOB-941e3fc6
-/report JOB-941e3fc6
-/harden JOB-941e3fc6
+/verify JOB-8f795d60
+/status JOB-8f795d60
+/gpt_review JOB-8f795d60
+/report JOB-8f795d60
+/harden JOB-8f795d60
 ```
 
 Expected result:
@@ -39,8 +39,8 @@ Expected result:
 
 ```txt
 /pay
-/check_payment CLWV-20260721-3fc6
-/simulate_payment CLWV-20260721-3fc6
+/check_payment CLWV-20260721-5d60
+/simulate_payment CLWV-20260721-5d60
 ```
 
 Expected result:

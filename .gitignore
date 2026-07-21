@@ -17,9 +17,13 @@ patches/JOB-*_pr_body.md
 reports/JOB-*.md
 !reports/sample_report.pdf
 !reports/sample_report.json
+reports/test-gpt56-advisor/
 runtime/
 coverage/
 .DS_Store
 
 ..env.swp
 *.swp
+pat
+outgoing-build-week.*
+build-week-transfer-artifacts.tar.gz
